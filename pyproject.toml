@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["frontend", ".venv"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = [
+  "shared",
+  "services/gateway",
+  "services/planner-agent",
+  "services/collector-agent",
+  "services/entity-agent",
+  "services/critic-agent",
+  "services/analyst-agent",
+]
+testpaths = ["services", "tests"]

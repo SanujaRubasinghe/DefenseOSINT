@@ -1,0 +1,14 @@
+{
+  "name": "analyst-agent",
+  "description": "Writes the evidence-grounded intelligence brief",
+  "version": "0.1.0",
+  "url": "http://analyst-agent:8000",
+  "skills": [
+    {
+      "id": "TODO",
+      "description": "TODO",
+      "input": "TODO",
+      "output": "TODO"
+    }
+  ]
+}

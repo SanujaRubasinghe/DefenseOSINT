@@ -1,0 +1,14 @@
+{
+  "name": "planner-agent",
+  "description": "Decomposes the objective into tasks, calls other agents, reacts to Critic feedback",
+  "version": "0.1.0",
+  "url": "http://planner-agent:8000",
+  "skills": [
+    {
+      "id": "TODO",
+      "description": "TODO",
+      "input": "TODO",
+      "output": "TODO"
+    }
+  ]
+}

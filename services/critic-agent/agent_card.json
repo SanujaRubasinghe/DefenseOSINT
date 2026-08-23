@@ -1,0 +1,14 @@
+{
+  "name": "critic-agent",
+  "description": "Verifies claims against evidence; finds unsupported claims, contradictions, gaps",
+  "version": "0.1.0",
+  "url": "http://critic-agent:8000",
+  "skills": [
+    {
+      "id": "TODO",
+      "description": "TODO",
+      "input": "TODO",
+      "output": "TODO"
+    }
+  ]
+}

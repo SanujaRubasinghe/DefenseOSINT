@@ -1,0 +1,14 @@
+{
+  "name": "entity-agent",
+  "description": "NER, entity linking, relation extraction and cross-referencing",
+  "version": "0.1.0",
+  "url": "http://entity-agent:8000",
+  "skills": [
+    {
+      "id": "TODO",
+      "description": "TODO",
+      "input": "TODO",
+      "output": "TODO"
+    }
+  ]
+}

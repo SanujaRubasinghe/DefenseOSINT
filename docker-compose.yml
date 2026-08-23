@@ -1,0 +1,74 @@
+name: defenseosint
+
+x-agent: &agent
+  restart: unless-stopped
+  env_file: [.env]
+  networks: [osint]
+
+services:
+  gateway:
+    <<: *agent
+    build: { context: ., dockerfile: services/gateway/Dockerfile }
+    ports: ["8000:8000"]
+
+  planner-agent:
+    <<: *agent
+    build: { context: ., dockerfile: services/planner-agent/Dockerfile }
+    ports: ["8001:8000"]
+
+  collector-agent:
+    <<: *agent
+    build: { context: ., dockerfile: services/collector-agent/Dockerfile }
+    ports: ["8002:8000"]
+
+  entity-agent:
+    <<: *agent
+    build: { context: ., dockerfile: services/entity-agent/Dockerfile }
+    ports: ["8003:8000"]
+
+  critic-agent:
+    <<: *agent
+    build: { context: ., dockerfile: services/critic-agent/Dockerfile }
+    ports: ["8004:8000"]
+
+  analyst-agent:
+    <<: *agent
+    build: { context: ., dockerfile: services/analyst-agent/Dockerfile }
+    ports: ["8005:8000"]
+
+  frontend:
+    build: { context: ./frontend }
+    ports: ["5173:5173"]
+    environment:
+      VITE_GATEWAY_URL: http://gateway:8000
+    volumes:
+      - ./frontend/src:/app/src
+    networks: [osint]
+    depends_on: [gateway]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-osint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-osint}
+      POSTGRES_DB: ${POSTGRES_DB:-defenseosint}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+    networks: [osint]
+
+  redis:
+    image: redis:7-alpine
+    networks: [osint]
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes: [ollama:/root/.ollama]
+    ports: ["11434:11434"]
+    networks: [osint]
+
+volumes:
+  pgdata:
+  ollama:
+
+networks:
+  osint:
