@@ -40,9 +40,9 @@ tests/       cross-service tests
 ## Contributors
 | Member | Role | Owns |
 |---|---|---|
-| _name_ | Leader | gateway, planner-agent, analyst-agent, shared/, docker |
-| _name_ | Collector / IR | collector-agent |
-| _name_ | NLP / Entity | entity-agent |
-| _name_ | Critic / Security / RAI | critic-agent |
+| Rubasinghe R.S. | Leader | gateway, planner-agent, analyst-agent, shared/, docker |
+| D.M.A.S.B. Thanayamwatta | Collector / IR | collector-agent |
+| H.M.R.M. Vidyanjani | NLP / Entity | entity-agent |
+| M.M.M. Javid | Critic / Security / RAI | critic-agent |
 
 See `docs/` for architecture and workflow.
