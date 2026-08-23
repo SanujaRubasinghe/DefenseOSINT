@@ -1,23 +1,39 @@
-.PHONY: setup up down logs test lint
+# Cross-platform: Windows uses .venv/Scripts, macOS/Linux uses .venv/bin
+ifeq ($(OS),Windows_NT)
+    VENV := .venv/Scripts
+else
+    VENV := .venv/bin
+endif
+PY := $(VENV)/python
 
-setup:          ## venv + shared package + dev tools
-	cp -n .env.example .env || true
+.PHONY: help setup up down logs test lint
+
+help:
+	@echo "setup  - create venv, install shared package and dev tools"
+	@echo "up     - build and start all services"
+	@echo "down   - stop all services"
+	@echo "logs   - tail one service:  make logs S=collector-agent"
+	@echo "test   - run pytest"
+	@echo "lint   - run ruff"
+
+setup:
+	python -c "import os,shutil; shutil.copy('.env.example','.env') if not os.path.exists('.env') else print('.env already exists')"
 	python -m venv .venv
-	./.venv/bin/pip install -U pip
-	./.venv/bin/pip install -e shared -r requirements-dev.txt
+	$(PY) -m pip install -U pip
+	$(PY) -m pip install -e shared -r requirements-dev.txt
 	cd frontend && npm install
 
-up:             ## start everything
+up:
 	docker compose up -d --build
 
 down:
 	docker compose down
 
-logs:           ## make logs S=collector-agent
+logs:
 	docker compose logs -f $(S)
 
 test:
-	pytest -q
+	$(PY) -m pytest -q
 
 lint:
-	ruff check .
+	$(PY) -m ruff check .
