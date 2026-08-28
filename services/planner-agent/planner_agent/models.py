@@ -73,10 +73,10 @@ class Investigation(BaseModel):
         action: str,
         detail: str = "",
         ok: bool = True,
-        duraction_ms: int | None = None,
+        duration_ms: int | None = None,
     ) -> None:
         self.trace.append(
-            TraceEvent(agent=agent, action=action, detail=detail, ok=ok, duration_ms=duraction_ms)
+            TraceEvent(agent=agent, action=action, detail=detail, ok=ok, duration_ms=duration_ms)
         )
 
     def pending(self, task_type: str | None = None) -> list[TaskRecord]:
