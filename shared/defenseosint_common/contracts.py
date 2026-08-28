@@ -30,6 +30,8 @@ class TaskType(str, Enum):
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
+    RUNNING = "running"
+    COMPLETE = "complete"
 
 
 class InvestigationTask(BaseModel):

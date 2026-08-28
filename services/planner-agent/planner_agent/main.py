@@ -3,12 +3,22 @@
 import asyncio
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .loop import run_investigation
 from .store import store
 
 app = FastAPI(title="planner-agent")
+
+# Dev-only: the frontend calls planner-agent directly on localhost:8001
+# until the gateway grows an /investigations route (see gateway/main.py).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 class InvestigationRequest(BaseModel):
