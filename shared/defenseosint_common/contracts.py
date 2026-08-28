@@ -1,9 +1,3 @@
-"""The five messages that travel between DefenseOSINT agents.
-
-Owned by the group leader. Changing a field here affects everyone, so bump
-CONTRACT_VERSION and tell the team in the PR.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,7 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.2.0"
 
 
 # --- building blocks -------------------------------------------------------
@@ -33,6 +27,9 @@ class TaskType(str, Enum):
     EXTRACT = "extract"
     VERIFY = "verify"
     SYNTHESIZE = "synthesize"
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
 
 
 class InvestigationTask(BaseModel):
@@ -102,6 +99,7 @@ class IntelligenceDraft(BaseModel):
     executive_summary: str
     sections: list[DraftSection] = Field(default_factory=list)
     overall_confidence: float = 0.0
+    version: int = 1
 
 
 # --- 5. Critic -> Planner --------------------------------------------------
@@ -115,6 +113,7 @@ class Finding(BaseModel):
     kind: str  # unsupported_claim | missing_citation | contradiction | gap
     severity: Severity
     description: str
+    claim: str | None = None
     suggested_queries: list[str] = Field(default_factory=list)
 
 

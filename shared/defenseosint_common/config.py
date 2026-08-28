@@ -20,5 +20,4 @@ class Settings:
         self.ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
         # Keys
-        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.a2a_token = os.getenv("A2A_SHARED_TOKEN", "")

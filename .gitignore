@@ -21,3 +21,6 @@ evaluation/results/*
 
 setup_structure.sh
 docs/DefenseOSINT_Setup_Guide.pdf
+
+.claude
+claude-cli.txt
