@@ -12,7 +12,7 @@ from .config import settings
 from .llm import LLMError, complete
 from .models import Investigation, new_id
 
-PROMPT = (Path(__file__).parent / "prompt" / "decompose.txt").read_text(encoding="utf-8")
+PROMPT = (Path(__file__).parent / "prompts" / "decompose.txt").read_text(encoding="utf-8")
 
 
 def _extract_json_array(text: str) -> list[dict]:
