@@ -66,18 +66,18 @@ async def extract(inv: Investigation, bundle: EvidenceBundle) -> EntityBundle | 
 async def synthesize(
     inv: Investigation, evidence: EvidenceBundle, entities: EntityBundle, version: int
 ) -> IntelligenceDraft | None:
-    payload = await _call(
-        inv,
-        settings.analyst_url,
-        "analyst-agent",
-        "synthesize",
-        {
-            "evidence": evidence.model_dump(mode="json"),
-            "entities": entities.model_dump(mode="json"),
-            "version": version,
-        },
-    )
-    return IntelligenceDraft.model_validate(payload) if payload else None
+    payload = {
+        "evidence": evidence.model_dump(mode="json"),
+        "entities": entities.model_dump(mode="json"),
+        "version": version,
+        "objective": inv.objective,
+    }
+    # On a re-synthesis, tell the Analyst what the Critic objected to.
+    if inv.assessments:
+        payload["assessment"] = inv.assessments[-1].model_dump(mode="json")
+
+    result = await _call(inv, settings.analyst_url, "analyst-agent", "synthesize", payload)
+    return IntelligenceDraft.model_validate(result) if result else None
 
 
 async def assess(
