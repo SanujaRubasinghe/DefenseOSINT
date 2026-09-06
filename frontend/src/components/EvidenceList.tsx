@@ -47,7 +47,7 @@ function EvidenceItem({ record }: { record: EvidenceRecord }) {
 
 export default function EvidenceList({ records }: { records: EvidenceRecord[] }) {
   if (records.length === 0) {
-    return <p className="muted">No evidence collected yet.</p>;
+    return <p className="empty-note">NO EVIDENCE — collection has not returned records yet.</p>;
   }
 
   return (

@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getHealth, getInvestigation, startInvestigation } from "./api/client";
 import type { Investigation } from "./api/types";
 import AgentTrace from "./components/AgentTrace";
+import BootSequence from "./components/BootSequence";
+import Clock from "./components/Clock";
 import CriticFindings from "./components/CriticFindings";
 import DraftSections from "./components/DraftSections";
 import EvidenceList from "./components/EvidenceList";
+import Panel from "./components/Panel";
 import StatusPill from "./components/StatusPill";
 import TaskTable from "./components/TaskTable";
 
@@ -13,6 +16,7 @@ const POLL_MS = 1500;
 
 export default function App() {
   const [gatewayStatus, setGatewayStatus] = useState("checking...");
+  const [gatewayChecked, setGatewayChecked] = useState(false);
   const [objective, setObjective] = useState(
     "Investigate the ownership and infrastructure history of example.com"
   );
@@ -25,7 +29,8 @@ export default function App() {
   useEffect(() => {
     getHealth()
       .then((d) => setGatewayStatus(d.status))
-      .catch(() => setGatewayStatus("unreachable"));
+      .catch(() => setGatewayStatus("unreachable"))
+      .finally(() => setGatewayChecked(true));
   }, []);
 
   useEffect(() => {
@@ -77,113 +82,148 @@ export default function App() {
 
   const failedTrace = investigation?.trace.filter((e) => !e.ok) ?? [];
   const evidenceById = useMemo(() => {
-    const map = new Map(investigation?.evidence.map((e) => [e.evidence_id, e]) ?? []);
-    return map;
+    return new Map(investigation?.evidence.map((e) => [e.evidence_id, e]) ?? []);
   }, [investigation?.evidence]);
+  const isLive = investigation ? ACTIVE_STATUSES.has(investigation.status) : false;
 
   return (
-    <main className="app">
-      <header className="header">
-        <h1>DefenseOSINT</h1>
-        <p className="muted">Multi-agent orchestration — mock run viewer</p>
-        <p>
-          Gateway: <strong>{gatewayStatus}</strong>{" "}
-          <span className="muted">
-            (investigations submitted directly to planner-agent at localhost:8001 — gateway has no
-            /investigations route yet)
-          </span>
+    <>
+      <BootSequence done={gatewayChecked} />
+
+      <div className="console">
+        <header className="console-header">
+          <div className="console-header-left">
+            <span className={`status-dot ${gatewayStatus === "ok" ? "status-dot-ok" : "status-dot-err"}`} />
+            <span className="console-wordmark">DEFENSEOSINT</span>
+            <span className="console-subtitle">// ORCHESTRATION CONSOLE</span>
+          </div>
+          <div className="console-header-right">
+            <span className="console-gateway">
+              GATEWAY:{" "}
+              <strong className={gatewayStatus === "ok" ? "text-ok" : "text-err"}>
+                {gatewayStatus.toUpperCase()}
+              </strong>
+            </span>
+            <Clock />
+          </div>
+        </header>
+
+        <p className="console-note">
+          Investigations are submitted directly to planner-agent at localhost:8001 — gateway has
+          no /investigations route yet.
         </p>
-      </header>
 
-      <section className="card">
-        <h2>Start investigation</h2>
-        <form onSubmit={handleSubmit} className="objective-form">
-          <textarea
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-            rows={3}
-            placeholder="Investigation objective (min 10 characters)"
-          />
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Starting..." : "Run"}
-          </button>
-        </form>
-        {formError && <div className="error-banner">{formError}</div>}
-      </section>
+        <div className="console-layout">
+          <div className="console-main">
+            <Panel index="00" title="NEW TASKING">
+              <form onSubmit={handleSubmit} className="objective-form">
+                <textarea
+                  value={objective}
+                  onChange={(e) => setObjective(e.target.value)}
+                  rows={3}
+                  placeholder="Investigation objective (min 10 characters)"
+                />
+                <button type="submit" disabled={submitting}>
+                  {submitting ? "TRANSMITTING…" : "RUN"}
+                </button>
+              </form>
+              {formError && <div className="error-banner">{formError}</div>}
+            </Panel>
 
-      {investigation && (
-        <>
-          <section className="card">
-            <h2>Investigation {investigation.investigation_id}</h2>
-            <div className="trace-row">
-              <StatusPill value={investigation.status} />
-              <span>iteration {investigation.iteration}</span>
-              <span>{investigation.a2a_calls} a2a calls</span>
-              <span>{investigation.evidence.length} evidence records</span>
-            </div>
-            {investigation.stopped_reason && (
-              <div
-                className={
-                  investigation.status === "complete" ? "note-banner" : "error-banner"
-                }
-              >
-                {investigation.stopped_reason}
-              </div>
+            {investigation && (
+              <>
+                <Panel
+                  index="01"
+                  title="INVESTIGATION STATUS"
+                  meta={<span className="mono-label">{investigation.investigation_id}</span>}
+                  scanning={isLive}
+                >
+                  <div className="trace-row">
+                    <StatusPill value={investigation.status} />
+                    <span className="mono-label">iteration {investigation.iteration}</span>
+                    <span className="mono-label">{investigation.a2a_calls} a2a calls</span>
+                    <span className="mono-label">
+                      {investigation.evidence.length} evidence records
+                    </span>
+                  </div>
+                  {investigation.stopped_reason && (
+                    <div
+                      className={
+                        investigation.status === "complete" ? "note-banner" : "error-banner"
+                      }
+                    >
+                      {investigation.stopped_reason}
+                    </div>
+                  )}
+                  {pollError && <div className="error-banner">UPLINK LOST: {pollError}</div>}
+                </Panel>
+
+                {failedTrace.length > 0 && (
+                  <Panel index="02" title={`AGENT FAULTS (${failedTrace.length})`} variant="error">
+                    <AgentTrace events={failedTrace} />
+                  </Panel>
+                )}
+
+                <div className="console-row">
+                  <Panel index="03" title="TASKING QUEUE">
+                    <TaskTable tasks={investigation.tasks} />
+                  </Panel>
+
+                  <Panel index="04" title="CRITIC ASSESSMENT">
+                    <CriticFindings assessments={investigation.assessments} />
+                  </Panel>
+                </div>
+
+                {investigation.draft && (
+                  <Panel
+                    index="05"
+                    title="INTELLIGENCE BRIEF"
+                    meta={<span className="mono-label">v{investigation.draft.version}</span>}
+                  >
+                    <h3 className="brief-title">{investigation.draft.title}</h3>
+                    <p>{investigation.draft.executive_summary}</p>
+                    <div className="meter-row meter-row-compact">
+                      <span className="meter-label">overall confidence</span>
+                      <div className="meter-track">
+                        <div
+                          className="meter-fill meter-fill-ok"
+                          style={{ width: `${investigation.draft.overall_confidence * 100}%` }}
+                        />
+                      </div>
+                      <span className="meter-value">
+                        {(investigation.draft.overall_confidence * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <DraftSections
+                      sections={investigation.draft.sections}
+                      evidenceById={evidenceById}
+                    />
+                  </Panel>
+                )}
+
+                <Panel index="06" title={`EVIDENCE LOG (${investigation.evidence.length})`}>
+                  <details open={investigation.evidence.length <= 5}>
+                    <summary className="evidence-summary">
+                      {investigation.evidence.length <= 5
+                        ? "expanded"
+                        : "collapsed — click to expand"}
+                    </summary>
+                    <EvidenceList records={investigation.evidence} />
+                  </details>
+                </Panel>
+              </>
             )}
-            {pollError && (
-              <div className="error-banner">Polling failed: {pollError}</div>
-            )}
-          </section>
+          </div>
 
-          {failedTrace.length > 0 && (
-            <section className="card card-error">
-              <h2>⚠ Agent errors ({failedTrace.length})</h2>
-              <AgentTrace events={failedTrace} />
-            </section>
+          {investigation && (
+            <aside className="console-rail">
+              <Panel index="07" title="AGENT TRACE" scanning={isLive}>
+                <AgentTrace events={investigation.trace} />
+              </Panel>
+            </aside>
           )}
-
-          <section className="card">
-            <h2>Tasks</h2>
-            <TaskTable tasks={investigation.tasks} />
-          </section>
-
-          <section className="card">
-            <h2>Critic assessment</h2>
-            <CriticFindings assessments={investigation.assessments} />
-          </section>
-
-          {investigation.draft && (
-            <section className="card">
-              <h2>Draft — {investigation.draft.title}</h2>
-              <p>{investigation.draft.executive_summary}</p>
-              <p className="muted">
-                overall confidence {(investigation.draft.overall_confidence * 100).toFixed(0)}% ·
-                version {investigation.draft.version}
-              </p>
-              <DraftSections
-                sections={investigation.draft.sections}
-                evidenceById={evidenceById}
-              />
-            </section>
-          )}
-
-          <section className="card">
-            <details open={investigation.evidence.length <= 5}>
-              <summary className="card-summary">
-                <h2 className="card-summary-title">
-                  Evidence ({investigation.evidence.length})
-                </h2>
-              </summary>
-              <EvidenceList records={investigation.evidence} />
-            </details>
-          </section>
-
-          <section className="card">
-            <h2>Full trace</h2>
-            <AgentTrace events={investigation.trace} />
-          </section>
-        </>
-      )}
-    </main>
+        </div>
+      </div>
+    </>
   );
 }

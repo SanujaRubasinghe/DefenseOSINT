@@ -3,7 +3,7 @@ import StatusPill from "./StatusPill";
 
 export default function TaskTable({ tasks }: { tasks: TaskRecord[] }) {
   if (tasks.length === 0) {
-    return <p className="muted">No tasks yet — plan hasn't been created.</p>;
+    return <p className="empty-note">NO ACTIVE TASKING — plan has not been created yet.</p>;
   }
 
   return (
@@ -19,15 +19,19 @@ export default function TaskTable({ tasks }: { tasks: TaskRecord[] }) {
         </tr>
       </thead>
       <tbody>
-        {tasks.map((t) => (
-          <tr key={t.task.task_id} className={t.error ? "task-row-error" : ""}>
-            <td>{t.task.type}</td>
+        {tasks.map((t, i) => (
+          <tr
+            key={t.task.task_id}
+            className={t.error ? "task-row-error" : ""}
+            style={{ animationDelay: `${i * 40}ms` }}
+          >
+            <td className="task-type">{t.task.type}</td>
             <td className="task-objective">{t.task.objective}</td>
             <td>
               <StatusPill value={t.status} />
             </td>
-            <td>{t.attempts}</td>
-            <td>{t.evidence_count}</td>
+            <td className="mono-cell">{t.attempts}</td>
+            <td className="mono-cell">{t.evidence_count}</td>
             <td className="task-error-cell">{t.error ?? ""}</td>
           </tr>
         ))}

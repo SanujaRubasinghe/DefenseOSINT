@@ -1,9 +1,9 @@
 import type { DraftSection, EvidenceRecord } from "../api/types";
 
-function confidenceClass(c: number): string {
-  if (c >= 0.7) return "pill-ok";
-  if (c >= 0.45) return "pill-warn";
-  return "pill-err";
+function meterClass(c: number): string {
+  if (c >= 0.7) return "meter-fill-ok";
+  if (c >= 0.45) return "meter-fill-warn";
+  return "meter-fill-err";
 }
 
 export default function DraftSections({
@@ -14,18 +14,24 @@ export default function DraftSections({
   evidenceById: Map<string, EvidenceRecord>;
 }) {
   if (sections.length === 0) {
-    return <p className="muted">No sections in this draft.</p>;
+    return <p className="empty-note">NO SECTIONS — draft has not been synthesized.</p>;
   }
 
   return (
     <div className="section-list">
       {sections.map((s, i) => (
-        <article key={i} className="section-item">
+        <article key={i} className="section-item" style={{ animationDelay: `${i * 60}ms` }}>
           <div className="trace-row">
             <h3 className="section-heading">{s.heading}</h3>
-            <span className={`pill ${confidenceClass(s.confidence)}`}>
-              {(s.confidence * 100).toFixed(0)}% conf
-            </span>
+          </div>
+          <div className="meter-row meter-row-compact">
+            <div className="meter-track">
+              <div
+                className={`meter-fill ${meterClass(s.confidence)}`}
+                style={{ width: `${s.confidence * 100}%` }}
+              />
+            </div>
+            <span className="meter-value">{(s.confidence * 100).toFixed(0)}% conf</span>
           </div>
           <p className="section-body">{s.body}</p>
 

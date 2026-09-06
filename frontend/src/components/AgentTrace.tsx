@@ -7,13 +7,13 @@ import type { TraceEvent } from "../api/types";
 // broke and why.
 export default function AgentTrace({ events }: { events: TraceEvent[] }) {
   if (events.length === 0) {
-    return <p className="muted">No trace events yet.</p>;
+    return <p className="empty-note">NO TELEMETRY — awaiting first agent handshake.</p>;
   }
 
   return (
     <ul className="trace-list">
-      {[...events].reverse().map((e, i) => (
-        <li key={i} className={`trace-item ${e.ok ? "" : "trace-item-error"}`}>
+      {[...events].reverse().map((e) => (
+        <li key={e.at} className={`trace-item ${e.ok ? "" : "trace-item-error"}`}>
           <div className="trace-row">
             <span className="trace-agent">{e.agent}</span>
             <span className="trace-action">{e.action}</span>
@@ -22,7 +22,7 @@ export default function AgentTrace({ events }: { events: TraceEvent[] }) {
           </div>
           {e.detail && (
             <div className={e.ok ? "trace-detail" : "trace-detail trace-error-text"}>
-              {e.ok ? "" : "ERROR: "}
+              {e.ok ? "" : "FAULT: "}
               {e.detail}
             </div>
           )}

@@ -1,6 +1,6 @@
 const COLORS: Record<string, string> = {
-  planning: "pill-neutral",
-  running: "pill-neutral",
+  planning: "pill-active",
+  running: "pill-active",
   pending: "pill-neutral",
   complete: "pill-ok",
   passed: "pill-ok",
