@@ -139,3 +139,54 @@ h2 { margin-top: 0; font-size: 1.05rem; }
 .finding-major { border-left-color: #d97a2b; background: #fdf1e6; }
 .finding-critical { border-left-color: #c0313c; background: #fdecec; }
 .finding-claim { color: #5a6b78; font-style: italic; margin-top: 0.15rem; }
+
+/* --- draft sections ----------------------------------------------------*/
+.section-list { display: flex; flex-direction: column; gap: 0.9rem; margin-top: 0.75rem; }
+.section-item {
+  border: 1px solid #eef2f5;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+.section-heading { font-size: 0.95rem; margin: 0; }
+.section-body { font-size: 0.9rem; margin: 0.4rem 0; white-space: pre-wrap; }
+.section-citations { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.3rem; }
+.caveat-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: #8a5a08;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 5px;
+  background: #eaf1f8;
+  color: #1f5aa8;
+  font-size: 0.78rem;
+  cursor: default;
+}
+.chip-err { background: #fdecec; color: #8a1f2a; }
+
+/* --- evidence list ------------------------------------------------------*/
+.card-summary { cursor: pointer; }
+.card-summary-title { display: inline; }
+.evidence-list { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+.evidence-item {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #eef2f5;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+}
+.evidence-title { font-weight: 600; }
+.evidence-meta { font-size: 0.78rem; margin-top: 0.15rem; }
+.evidence-content { margin: 0.4rem 0 0.2rem; white-space: pre-wrap; }
+.link-button {
+  border: none;
+  background: none;
+  color: #1f5aa8;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0;
+}

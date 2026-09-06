@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getHealth, getInvestigation, startInvestigation } from "./api/client";
 import type { Investigation } from "./api/types";
 import AgentTrace from "./components/AgentTrace";
 import CriticFindings from "./components/CriticFindings";
+import DraftSections from "./components/DraftSections";
+import EvidenceList from "./components/EvidenceList";
 import StatusPill from "./components/StatusPill";
 import TaskTable from "./components/TaskTable";
 
@@ -74,6 +76,10 @@ export default function App() {
   }
 
   const failedTrace = investigation?.trace.filter((e) => !e.ok) ?? [];
+  const evidenceById = useMemo(() => {
+    const map = new Map(investigation?.evidence.map((e) => [e.evidence_id, e]) ?? []);
+    return map;
+  }, [investigation?.evidence]);
 
   return (
     <main className="app">
@@ -154,8 +160,23 @@ export default function App() {
                 overall confidence {(investigation.draft.overall_confidence * 100).toFixed(0)}% ·
                 version {investigation.draft.version}
               </p>
+              <DraftSections
+                sections={investigation.draft.sections}
+                evidenceById={evidenceById}
+              />
             </section>
           )}
+
+          <section className="card">
+            <details open={investigation.evidence.length <= 5}>
+              <summary className="card-summary">
+                <h2 className="card-summary-title">
+                  Evidence ({investigation.evidence.length})
+                </h2>
+              </summary>
+              <EvidenceList records={investigation.evidence} />
+            </details>
+          </section>
 
           <section className="card">
             <h2>Full trace</h2>
