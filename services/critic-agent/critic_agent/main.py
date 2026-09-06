@@ -17,6 +17,8 @@ from fastapi import FastAPI
 import re
 from typing import Set, List, Dict, Any
 import logging
+import json
+import aiohttp
 
 settings = Settings("critic-agent")
 app = FastAPI(title="critic-agent")
@@ -47,7 +49,8 @@ async def run_assessment(
     1. Extract all evidence IDs from the evidence bundle
     2. For each section in the draft, check if claims are supported by cited evidence
     3. Identify unsupported claims, missing citations, contradictions, and gaps
-    4. Return assessment with findings and recommendations
+    4. Use Ollama to verify contradictions between claims and evidence
+    5. Return assessment with findings and recommendations
     """
     logger.info(f"Starting critic assessment for investigation {draft.investigation_id}, iteration {iteration}")
 
@@ -70,7 +73,8 @@ async def run_assessment(
     gap_findings = await _check_for_gaps(draft, evidence_lookup)
     findings.extend(gap_findings)
 
-    contradiction_findings = await _check_for_contradictions(draft.sections, evidence_lookup)
+    # Check for contradictions using Ollama for enhanced verification
+    contradiction_findings = await _check_for_contradictions_enhanced(draft.sections, evidence_lookup)
     findings.extend(contradiction_findings)
 
     # Calculate citation coverage
@@ -208,6 +212,112 @@ async def _check_for_contradictions(
                     ))
 
     return findings[:3]  # Limit to avoid too many findings
+
+
+async def _check_for_contradictions_enhanced(
+    sections: List[DraftSection],
+    evidence_lookup: Dict[str, Any]
+) -> List[Finding]:
+    """Check for contradictions using Ollama with gpt-oss:20b for enhanced verification."""
+    findings = []
+
+    # Extract claims with their supporting evidence
+    claims_with_evidence = []
+    for section in sections:
+        if section.evidence_ids:
+            # Get the actual evidence text for each cited evidence ID
+            evidence_texts = []
+            for eid in section.evidence_ids:
+                if eid in evidence_lookup:
+                    record = evidence_lookup[eid]
+                    # Assuming record has a 'content' or 'text' field
+                    evidence_text = getattr(record, 'content', getattr(record, 'text', str(record)))
+                    evidence_texts.append(evidence_text)
+
+            if evidence_texts:
+                claims_with_evidence.append({
+                    "section": section.heading,
+                    "claims": _extract_claims_from_text(section.body),
+                    "evidence": evidence_texts
+                })
+
+    # Check for contradictions between claims using Ollama
+    for i, claim_set1 in enumerate(claims_with_evidence):
+        for claim_set2 in claims_with_evidence[i+1:]:
+            for claim1 in claim_set1["claims"]:
+                for claim2 in claim_set2["claims"]:
+                    # Use Ollama to verify if there's a contradiction
+                    is_contradiction = await _verify_contradiction_with_ollama(
+                        claim1,
+                        claim2,
+                        claim_set1["evidence"] + claim_set2["evidence"]
+                    )
+
+                    if is_contradiction:
+                        findings.append(Finding(
+                            kind="contradiction",
+                            severity=Severity.MAJOR,
+                            description=f"Ollama-verified contradiction between '{claim_set1['section']}' and '{claim_set2['section']}': "
+                                      f"'{claim1}' vs '{claim2}'",
+                            suggested_queries=[f"verify contradiction: {claim1} {claim2}"],
+                        ))
+
+    return findings[:5]  # Limit findings
+
+
+async def _verify_contradiction_with_ollama(
+    claim1: str,
+    claim2: str,
+    evidence_texts: List[str]
+) -> bool:
+    """Use Ollama with gpt-oss:20b to verify if two claims contradict each other."""
+    try:
+        # Prepare the prompt for Ollama
+        evidence_context = "\n\n".join([f"Evidence {i+1}: {text[:500]}..." for i, text in enumerate(evidence_texts[:3])])
+
+        prompt = f"""You are a fact-checking expert. Determine if the two claims below contradict each other based on the provided evidence.
+
+Claim 1: {claim1}
+Claim 2: {claim2}
+
+Evidence:
+{evidence_context}
+
+Instructions:
+1. Analyze both claims carefully
+2. Consider the evidence provided
+3. Determine if the claims are logically contradictory (cannot both be true at the same time)
+4. Respond with only "YES" if they contradict, or "NO" if they don't contradict or if uncertain
+
+Your response:"""
+
+        # Call Ollama API
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": "gpt-oss:20b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "top_p": 0.9
+                    }
+                },
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    response_text = result.get("response", "").strip().upper()
+                    return response_text == "YES"
+                else:
+                    logger.warning(f"Ollama API returned status {response.status}")
+                    return False
+
+    except Exception as e:
+        logger.error(f"Error calling Ollama for contradiction verification: {e}")
+        # Fallback to original method if Ollama fails
+        return False
 
 
 def _extract_claim_from_text(text: str) -> str:
