@@ -74,7 +74,7 @@ async def run_assessment(
     findings.extend(gap_findings)
 
     # Check for contradictions using Ollama for enhanced verification
-    contradiction_findings = await _check_for_contradictions_enhanced(draft.sections, evidence_lookup)
+    contradiction_findings = await _check_for_contradictions_ollama(draft.sections, evidence_lookup)
     findings.extend(contradiction_findings)
 
     # Calculate citation coverage
@@ -214,7 +214,7 @@ async def _check_for_contradictions(
     return findings[:3]  # Limit to avoid too many findings
 
 
-async def _check_for_contradictions_enhanced(
+async def _check_for_contradictions_ollama(
     sections: List[DraftSection],
     evidence_lookup: Dict[str, Any]
 ) -> List[Finding]:
