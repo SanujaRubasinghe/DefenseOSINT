@@ -7,6 +7,7 @@ import Clock from "./components/Clock";
 import CriticFindings from "./components/CriticFindings";
 import DraftSections from "./components/DraftSections";
 import EvidenceList from "./components/EvidenceList";
+import IntelligenceFabric from "./components/IntelligenceFabric";
 import Panel from "./components/Panel";
 import StatusPill from "./components/StatusPill";
 import TaskTable from "./components/TaskTable";
@@ -113,9 +114,21 @@ export default function App() {
           no /investigations route yet.
         </p>
 
+        <Panel
+          index="01"
+          title="INTELLIGENCE FABRIC"
+          meta={<span className="mono-label">agent network · live execution</span>}
+          scanning={isLive}
+        >
+          <IntelligenceFabric
+            investigation={investigation}
+            networkOnline={gatewayStatus === "ok"}
+          />
+        </Panel>
+
         <div className="console-layout">
           <div className="console-main">
-            <Panel index="00" title="NEW TASKING">
+            <Panel index="02" title="NEW TASKING">
               <form onSubmit={handleSubmit} className="objective-form">
                 <textarea
                   value={objective}
@@ -133,7 +146,7 @@ export default function App() {
             {investigation && (
               <>
                 <Panel
-                  index="01"
+                  index="03"
                   title="INVESTIGATION STATUS"
                   meta={<span className="mono-label">{investigation.investigation_id}</span>}
                   scanning={isLive}
@@ -159,24 +172,24 @@ export default function App() {
                 </Panel>
 
                 {failedTrace.length > 0 && (
-                  <Panel index="02" title={`AGENT FAULTS (${failedTrace.length})`} variant="error">
+                  <Panel index="04" title={`AGENT FAULTS (${failedTrace.length})`} variant="error">
                     <AgentTrace events={failedTrace} />
                   </Panel>
                 )}
 
                 <div className="console-row">
-                  <Panel index="03" title="TASKING QUEUE">
+                  <Panel index="05" title="TASKING QUEUE">
                     <TaskTable tasks={investigation.tasks} />
                   </Panel>
 
-                  <Panel index="04" title="CRITIC ASSESSMENT">
+                  <Panel index="06" title="CRITIC ASSESSMENT">
                     <CriticFindings assessments={investigation.assessments} />
                   </Panel>
                 </div>
 
                 {investigation.draft && (
                   <Panel
-                    index="05"
+                    index="07"
                     title="INTELLIGENCE BRIEF"
                     meta={<span className="mono-label">v{investigation.draft.version}</span>}
                   >
@@ -201,7 +214,7 @@ export default function App() {
                   </Panel>
                 )}
 
-                <Panel index="06" title={`EVIDENCE LOG (${investigation.evidence.length})`}>
+                <Panel index="08" title={`EVIDENCE LOG (${investigation.evidence.length})`}>
                   <details open={investigation.evidence.length <= 5}>
                     <summary className="evidence-summary">
                       {investigation.evidence.length <= 5
@@ -217,7 +230,7 @@ export default function App() {
 
           {investigation && (
             <aside className="console-rail">
-              <Panel index="07" title="AGENT TRACE" scanning={isLive}>
+              <Panel index="09" title="RAW TRACE" scanning={isLive}>
                 <AgentTrace events={investigation.trace} />
               </Panel>
             </aside>
