@@ -15,6 +15,7 @@ from defenseosint_common.contracts import (
 )
 from fastapi import FastAPI
 import re
+from datetime import datetime, timezone
 from typing import Set, List, Dict, Any
 import logging
 
@@ -152,9 +153,10 @@ async def _check_for_gaps(
                 " ".join([s.heading + " " + s.body for s in draft.sections])
 
     # Look for temporal gaps
+    current_year = datetime.now(timezone.utc).year
     if any(word in full_text.lower() for word in ["recent", "latest", "current", "now"]) and \
-       not any("2024" in str(e.published_at.year) if e.published_at else False
-               for e in evidence_lookup.values() if e.published_at):
+       not any(e.provenance.published_at.year >= current_year - 1
+               for e in evidence_lookup.values() if e.provenance.published_at):
         findings.append(Finding(
             kind="gap",
             severity=Severity.MINOR,

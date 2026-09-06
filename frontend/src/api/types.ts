@@ -42,12 +42,38 @@ export interface EntityBundle {
   relationships: { subject_id: string; predicate: string; object_id: string; confidence: number }[];
 }
 
+export interface DraftSection {
+  heading: string;
+  body: string;
+  evidence_ids: string[];
+  confidence: number;
+  caveats: string[];
+}
+
 export interface IntelligenceDraft {
   title: string;
   executive_summary: string;
-  sections: { heading: string; body: string; confidence: number; caveats: string[] }[];
+  sections: DraftSection[];
   overall_confidence: number;
   version: number;
+}
+
+export interface Provenance {
+  source_name: string;
+  source_type: string;
+  source_url: string | null;
+  retrieved_at: string;
+  published_at: string | null;
+  collector: string;
+  query: string | null;
+}
+
+export interface EvidenceRecord {
+  evidence_id: string;
+  title: string | null;
+  content: string;
+  provenance: Provenance;
+  relevance_score: number;
 }
 
 export interface Finding {
@@ -73,7 +99,7 @@ export interface Investigation {
   created_at: string;
   iteration: number;
   tasks: TaskRecord[];
-  evidence: unknown[];
+  evidence: EvidenceRecord[];
   entities: EntityBundle | null;
   draft: IntelligenceDraft | null;
   assessments: CriticAssessment[];
