@@ -1,23 +1,114 @@
-"""collector-agent — retrieves public sources with provenance.
+# """collector-agent — retrieves public sources with provenance."""
 
-PHASE 3 STUB. Member 2 replaces run_collection() with real retrieval.
-The response shape is final — build against it.
-"""
+# from datetime import datetime, timezone
 
-from datetime import datetime, timezone
+# from defenseosint_common.a2a import A2AMessage, reply
+# from defenseosint_common.config import Settings
+# from defenseosint_common.contracts import (
+#     EvidenceBundle,
+#     EvidenceRecord,
+#     InvestigationTask,
+#     Provenance,
+# )
+# from fastapi import FastAPI
 
-from defenseosint_common.a2a import A2AMessage, reply
-from defenseosint_common.config import Settings
-from defenseosint_common.contracts import (
-    EvidenceBundle,
-    EvidenceRecord,
-    InvestigationTask,
-    Provenance,
-)
+# from collector_agent.tools.web import WebCollector
+
+
+# settings = Settings("collector-agent")
+
+# app = FastAPI(title="collector-agent")
+
+# web_collector = WebCollector()
+
+
+# @app.get("/health")
+# async def health():
+#     return {
+#         "status": "ok",
+#         "service": "collector-agent",
+#     }
+
+
+# @app.post("/a2a/collect")
+# async def collect(msg: A2AMessage):
+#     task = InvestigationTask.model_validate(msg.payload)
+
+#     bundle = await run_collection(task)
+
+#     return reply(
+#         msg,
+#         "collector-agent",
+#         bundle,
+#     )
+
+
+# async def run_collection(task: InvestigationTask) -> EvidenceBundle:
+#     """Collect evidence from the public web."""
+
+#     # Use the first query provided by the Planner.
+#     # If no query exists, use the investigation objective.
+#     query = task.queries[0] if task.queries else task.objective
+
+#     # Respect the source budget from InvestigationTask.
+#     max_results = min(task.max_sources, 20)
+
+#     search_results = await web_collector.search(
+#         query=query,
+#         max_results=max_results,
+#     )
+
+#     records: list[EvidenceRecord] = []
+
+#     for index, result in enumerate(search_results, start=1):
+#         url = result.get("url", "")
+
+#         # Ignore results without a URL.
+#         if not url:
+#             continue
+
+#         records.append(
+#             EvidenceRecord(
+#                 evidence_id=f"{task.task_id}_ev{index}",
+#                 title=result.get("title", "Untitled"),
+#                 content=result.get("snippet", ""),
+#                 relevance_score=0.0,
+#                 provenance=Provenance(
+#                     source_name=result.get("source", "duckduckgo"),
+#                     source_type="web",
+#                     source_url=url,
+#                     retrieved_at=datetime.now(timezone.utc),
+#                     collector="web",
+#                     query=query,
+#                 ),
+#             )
+#         )
+
+#     return EvidenceBundle(
+#         investigation_id=task.investigation_id,
+#         task_id=task.task_id,
+#         records=records,
+#         queries_executed=[query],
+#     )
+
+
+
+
+
+
+
+# services/collector-agent/collector_agent/main.py
+import uuid
+
 from fastapi import FastAPI
+from defenseosint_common.a2a import A2AMessage, reply
+from defenseosint_common.contracts import (
+    InvestigationTask, EvidenceBundle, EvidenceRecord, Provenance,
+)
 
-settings = Settings("collector-agent")
-app = FastAPI(title="collector-agent")
+from .tools.web import search_and_fetch
+
+app = FastAPI()
 
 
 @app.get("/health")
@@ -33,50 +124,31 @@ async def collect(msg: A2AMessage):
 
 
 async def run_collection(task: InvestigationTask) -> EvidenceBundle:
-    now = datetime.now(timezone.utc)
     query = task.queries[0] if task.queries else task.objective
+
+    raw_pages = await search_and_fetch(query, max_pages=min(task.max_sources, 8))
+
+    records = [
+        EvidenceRecord(
+            evidence_id=str(uuid.uuid4()),
+            title=page["title"] or None,
+            content=page["content"],
+            provenance=Provenance(
+                source_name=page["title"] or page["source_url"],
+                source_type="web",
+                source_url=page["source_url"],
+                retrieved_at=page["retrieved_at"],
+                collector="collector-agent:web",
+                query=query,
+            ),
+            relevance_score=0.5,  # first pass: flat score, refine later
+        )
+        for page in raw_pages
+    ]
 
     return EvidenceBundle(
         investigation_id=task.investigation_id,
         task_id=task.task_id,
-        queries_executed=task.queries or [task.objective],
-        records=[
-            EvidenceRecord(
-                evidence_id=f"{task.task_id}_ev1",
-                title="Organization X expands regional operations",
-                content=(
-                    "Organization X announced an expansion of its regional "
-                    "operations in March 2025, according to a statement published "
-                    "on its official website. The statement named Jane Doe as "
-                    "programme director."
-                ),
-                relevance_score=0.86,
-                provenance=Provenance(
-                    source_name="Example News",
-                    source_type="news",
-                    source_url="https://example-news.org/organization-x-expansion",
-                    retrieved_at=now,
-                    collector="web",
-                    query=query,
-                ),
-            ),
-            EvidenceRecord(
-                evidence_id=f"{task.task_id}_ev2",
-                title="Organization X — official about page",
-                content=(
-                    "Organization X is headquartered in Riga and was founded in "
-                    "2012. Its published leadership page lists Jane Doe and "
-                    "Mikael Berg."
-                ),
-                relevance_score=0.72,
-                provenance=Provenance(
-                    source_name="organization-x.example",
-                    source_type="web",
-                    source_url="https://organization-x.example/about",
-                    retrieved_at=now,
-                    collector="web",
-                    query=query,
-                ),
-            ),
-        ],
+        records=records,
+        queries_executed=[query],
     )
