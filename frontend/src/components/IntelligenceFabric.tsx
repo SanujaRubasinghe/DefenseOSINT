@@ -1,22 +1,16 @@
 import { useMemo, useState } from "react";
-import type { Investigation } from "../api/types";
 import { countByState, deriveNetwork, formatClock, pad2 } from "../agents/network";
 import { NODES } from "../agents/topology";
-import { useNetworkPlayback } from "../hooks/useNetworkPlayback";
+import { useInvestigation } from "../state/InvestigationContext";
 import ActivityStream from "./ActivityStream";
 import AgentInspector from "./AgentInspector";
 import AgentNetwork, { type Selection } from "./AgentNetwork";
 
-interface Props {
-  investigation: Investigation | null;
-  networkOnline: boolean;
-}
-
-export default function IntelligenceFabric({ investigation, networkOnline }: Props) {
+export default function IntelligenceFabric() {
   const [selection, setSelection] = useState<Selection>(null);
+  const { investigation, networkOnline, playback } = useInvestigation();
+  const { playedEvents, packets, activeAgents, activeEdges, isReplaying, replay } = playback;
   const trace = investigation?.trace ?? [];
-  const { playedEvents, packets, activeAgents, activeEdges, progress, isReplaying, replay } =
-    useNetworkPlayback(trace);
 
   const runtime = useMemo(
     () => deriveNetwork(investigation, playedEvents, activeAgents),
@@ -53,11 +47,6 @@ export default function IntelligenceFabric({ investigation, networkOnline }: Pro
           EVENTS <strong>{playedEvents.length}</strong>
           {isReplaying && <span className="fabric-catchup"> / {trace.length}</span>}
         </span>
-        {investigation && (
-          <span className="fabric-stat">
-            RUN <strong>{investigation.investigation_id}</strong>
-          </span>
-        )}
         {lastEvent && (
           <span className="fabric-stat">
             LAST <strong>{formatClock(lastEvent.at)}</strong>
@@ -100,8 +89,8 @@ export default function IntelligenceFabric({ investigation, networkOnline }: Pro
         </div>
       </div>
 
-      {/* Execution path stays legible when the graph is scrolled off on narrow
-          viewports — it is the same state the graph shows, in one line. */}
+      {/* Execution path stays legible when the graph scrolls off on narrow
+          viewports — same state as the graph, in one line. */}
       <div className="fabric-path">
         {NODES.map((node, i) => {
           const state = runtime.get(node.id)!.state;

@@ -60,13 +60,24 @@ export interface NetworkPlayback {
   replay: () => void;
 }
 
-export function useNetworkPlayback(trace: TraceEvent[]): NetworkPlayback {
+export function useNetworkPlayback(trace: TraceEvent[], runId?: string | null): NetworkPlayback {
   const steps = useMemo(() => groupSteps(trace), [trace]);
   const [cursor, setCursor] = useState(0);
   const [packets, setPackets] = useState<Packet[]>([]);
   const [settled, setSettled] = useState(false);
   const nextId = useRef(0);
   const reduced = useRef(prefersReducedMotion());
+
+  // Playback lives above the router so navigating between pages does not
+  // restart it — but switching to a different run must start from zero.
+  const lastRun = useRef(runId);
+  useEffect(() => {
+    if (lastRun.current === runId) return;
+    lastRun.current = runId;
+    setPackets([]);
+    setSettled(false);
+    setCursor(0);
+  }, [runId]);
 
   // Advance one step at a time while there is unplayed trace.
   useEffect(() => {
