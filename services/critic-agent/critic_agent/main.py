@@ -3,6 +3,14 @@
 Implements claim verification against evidence for the DefenseOSINT platform.
 """
 
+import asyncio
+import logging
+import os
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set
+
+import httpx
 from defenseosint_common.a2a import A2AMessage, reply
 from defenseosint_common.config import Settings
 from defenseosint_common.contracts import (
@@ -14,16 +22,19 @@ from defenseosint_common.contracts import (
     Severity,
 )
 from fastapi import FastAPI
-import re
-from datetime import datetime, timezone
-from typing import Set, List, Dict, Any
-import logging
-import json
-import aiohttp
 
 settings = Settings("critic-agent")
 app = FastAPI(title="critic-agent")
 logger = logging.getLogger(__name__)
+
+# A contradiction check is binary NLI with a one-token answer, so it does not
+# need a large model. qwen2.5:3b is already pulled for the planner, which keeps
+# it warm in Ollama and inside VRAM.
+CRITIC_MODEL = os.getenv("CRITIC_MODEL", "qwen2.5:3b")
+LLM_TIMEOUT = float(os.getenv("CRITIC_LLM_TIMEOUT", "20"))
+# Hard ceiling on model calls per assessment. Claim pairs grow quadratically
+# with section count, and the planner drops the critic after 60s (A2AClient).
+MAX_VERIFICATIONS = int(os.getenv("CRITIC_MAX_VERIFICATIONS", "10"))
 
 
 @app.get("/health")
@@ -216,110 +227,185 @@ async def _check_for_contradictions(
     return findings[:3]  # Limit to avoid too many findings
 
 
+# Cheap antonym screen. Only claim pairs that trip one of these reach the
+# model, so the number of LLM calls stays bounded rather than quadratic in the
+# claim count. The model's job is to reject the false positives this screen
+# inevitably produces, which is where it actually earns its cost.
+CONTRADICTION_PATTERNS = [
+    (r"\b(increase|increased|rise|rose|grow|grew|expand\w*)\b", r"\b(decrease|decreased|fall|fell|declin\w*|drop\w*|shrank|shrunk)\b"),
+    (r"\b(effective|successful|succeeded)\b", r"\b(ineffective|unsuccessful|failed|failure)\b"),
+    (r"\b(legal|legitimate|lawful)\b", r"\b(illegal|illicit|unlawful)\b"),
+    (r"\b(confirmed|verified|proven)\b", r"\b(unconfirmed|unverified|disputed|alleged)\b"),
+    (r"\b(owns|owned|acquired|acquisition)\b", r"\b(sold|divested|disposed)\b"),
+]
+
+
+def _trips_antonym_screen(text1: str, text2: str) -> bool:
+    a, b = text1.lower(), text2.lower()
+    for positive, negative in CONTRADICTION_PATTERNS:
+        if (re.search(positive, a) and re.search(negative, b)) or (
+            re.search(negative, a) and re.search(positive, b)
+        ):
+            return True
+    return False
+
+
+def _shortlist_contradiction_candidates(
+    sections: List[DraftSection],
+    evidence_lookup: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Pairs worth spending a model call on, capped at MAX_VERIFICATIONS."""
+    entries = []
+    for section in sections:
+        if not section.evidence_ids:
+            continue
+        evidence_texts = [
+            getattr(evidence_lookup[eid], "content", str(evidence_lookup[eid]))
+            for eid in section.evidence_ids
+            if eid in evidence_lookup
+        ]
+        if evidence_texts:
+            entries.append({
+                "section": section.heading,
+                "claims": _extract_claims_from_text(section.body),
+                "evidence": evidence_texts,
+            })
+
+    candidates: List[Dict[str, Any]] = []
+    for i, first in enumerate(entries):
+        for second in entries[i + 1:]:
+            for claim1 in first["claims"]:
+                for claim2 in second["claims"]:
+                    if not _trips_antonym_screen(claim1, claim2):
+                        continue
+                    candidates.append({
+                        "claim1": claim1,
+                        "claim2": claim2,
+                        "section1": first["section"],
+                        "section2": second["section"],
+                        "evidence": first["evidence"] + second["evidence"],
+                    })
+                    if len(candidates) >= MAX_VERIFICATIONS:
+                        return candidates
+    return candidates
+
+
 async def _check_for_contradictions_ollama(
     sections: List[DraftSection],
     evidence_lookup: Dict[str, Any]
 ) -> List[Finding]:
-    """Check for contradictions using Ollama with gpt-oss:20b for enhanced verification."""
-    findings = []
+    """Screen claim pairs, then confirm the survivors with the model in parallel."""
+    candidates = _shortlist_contradiction_candidates(sections, evidence_lookup)
+    if not candidates:
+        return []
 
-    # Extract claims with their supporting evidence
-    claims_with_evidence = []
-    for section in sections:
-        if section.evidence_ids:
-            # Get the actual evidence text for each cited evidence ID
-            evidence_texts = []
-            for eid in section.evidence_ids:
-                if eid in evidence_lookup:
-                    record = evidence_lookup[eid]
-                    # Assuming record has a 'content' or 'text' field
-                    evidence_text = getattr(record, 'content', getattr(record, 'text', str(record)))
-                    evidence_texts.append(evidence_text)
+    logger.info("Verifying %d contradiction candidate(s) with %s", len(candidates), CRITIC_MODEL)
+    verdicts = await asyncio.gather(
+        *(
+            _verify_contradiction_with_ollama(c["claim1"], c["claim2"], c["evidence"])
+            for c in candidates
+        )
+    )
 
-            if evidence_texts:
-                claims_with_evidence.append({
-                    "section": section.heading,
-                    "claims": _extract_claims_from_text(section.body),
-                    "evidence": evidence_texts
-                })
+    findings: List[Finding] = []
+    for candidate, verdict in zip(candidates, verdicts):
+        pair = f"'{candidate['claim1']}' vs '{candidate['claim2']}'"
+        between = f"between '{candidate['section1']}' and '{candidate['section2']}'"
 
-    # Check for contradictions between claims using Ollama
-    for i, claim_set1 in enumerate(claims_with_evidence):
-        for claim_set2 in claims_with_evidence[i+1:]:
-            for claim1 in claim_set1["claims"]:
-                for claim2 in claim_set2["claims"]:
-                    # Use Ollama to verify if there's a contradiction
-                    is_contradiction = await _verify_contradiction_with_ollama(
-                        claim1,
-                        claim2,
-                        claim_set1["evidence"] + claim_set2["evidence"]
-                    )
+        if verdict is True:
+            findings.append(Finding(
+                kind="contradiction",
+                severity=Severity.MAJOR,
+                description=f"Model-verified contradiction {between}: {pair}",
+                claim=candidate["claim1"],
+                suggested_queries=[f"verify contradiction: {candidate['claim1']}"],
+            ))
+        elif verdict is None:
+            # The model could not be reached or gave no usable answer. Report
+            # the screen's suspicion at lower severity rather than dropping it
+            # silently, so a degraded critic is visible instead of looking
+            # like a clean pass.
+            findings.append(Finding(
+                kind="unverified_contradiction",
+                severity=Severity.MINOR,
+                description=(
+                    f"Possible contradiction {between} flagged by keyword screen, but model "
+                    f"verification was unavailable: {pair}"
+                ),
+                claim=candidate["claim1"],
+                suggested_queries=[f"verify contradiction: {candidate['claim1']}"],
+            ))
+        # verdict is False -> the model cleared it; drop the false positive.
 
-                    if is_contradiction:
-                        findings.append(Finding(
-                            kind="contradiction",
-                            severity=Severity.MAJOR,
-                            description=f"Ollama-verified contradiction between '{claim_set1['section']}' and '{claim_set2['section']}': "
-                                      f"'{claim1}' vs '{claim2}'",
-                            suggested_queries=[f"verify contradiction: {claim1} {claim2}"],
-                        ))
-
-    return findings[:5]  # Limit findings
+    return findings[:5]
 
 
 async def _verify_contradiction_with_ollama(
     claim1: str,
     claim2: str,
     evidence_texts: List[str]
-) -> bool:
-    """Use Ollama with gpt-oss:20b to verify if two claims contradict each other."""
+) -> Optional[bool]:
+    """Ask the model whether two claims contradict.
+
+    Returns True/False for a clear verdict, or None when the model could not be
+    reached or answered ambiguously. None is deliberately distinct from False:
+    the caller must not read "could not check" as "no contradiction".
+    """
     try:
         # Prepare the prompt for Ollama
         evidence_context = "\n\n".join([f"Evidence {i+1}: {text[:500]}..." for i, text in enumerate(evidence_texts[:3])])
 
-        prompt = f"""You are a fact-checking expert. Determine if the two claims below contradict each other based on the provided evidence.
+        # Two worked examples: a 3B model is unreliable at this without them.
+        # The instruction to judge the statements themselves matters — asking it
+        # to decide "based on the evidence" makes it answer NO whenever the
+        # evidence is thin, which is most of the time.
+        prompt = f"""You judge whether two statements are logically contradictory: whether both cannot be true at the same time about the same subject and period. Judge the statements themselves. Use the context only to resolve what they refer to; thin context is not a reason to answer UNCLEAR.
 
-Claim 1: {claim1}
-Claim 2: {claim2}
+Answer with exactly one word: YES, NO, or UNCLEAR.
 
-Evidence:
-{evidence_context}
+Example 1
+A: The site was taken offline in June.
+B: The site remained operational throughout June.
+Answer: YES
 
-Instructions:
-1. Analyze both claims carefully
-2. Consider the evidence provided
-3. Determine if the claims are logically contradictory (cannot both be true at the same time)
-4. Respond with only "YES" if they contradict, or "NO" if they don't contradict or if uncertain
+Example 2
+A: The firm is based in Riga.
+B: The firm was founded in 2012.
+Answer: NO
 
-Your response:"""
+Now judge this pair.
+Context: {evidence_context}
+A: {claim1}
+B: {claim2}
+Answer:"""
 
-        # Call Ollama API
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "http://localhost:11434/api/generate",
+        # settings.ollama_url resolves to the compose service name; "localhost"
+        # inside this container would be the critic itself, not Ollama.
+        async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
+            response = await client.post(
+                f"{settings.ollama_url.rstrip('/')}/api/generate",
                 json={
-                    "model": "gpt-oss:20b",
+                    "model": CRITIC_MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        "top_p": 0.9
-                    }
+                    # Deterministic: this is a classification, not generation.
+                    "options": {"temperature": 0, "num_predict": 8},
                 },
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    response_text = result.get("response", "").strip().upper()
-                    return response_text == "YES"
-                else:
-                    logger.warning(f"Ollama API returned status {response.status}")
-                    return False
+            )
+            response.raise_for_status()
+
+        answer = response.json().get("response", "").strip().upper()
+        if answer.startswith("YES"):
+            return True
+        if answer.startswith("NO"):
+            return False
+        if not answer.startswith("UNCLEAR"):
+            logger.warning("Unparsable verdict from %s: %r", CRITIC_MODEL, answer[:80])
+        return None
 
     except Exception as e:
-        logger.error(f"Error calling Ollama for contradiction verification: {e}")
-        # Fallback to original method if Ollama fails
-        return False
+        logger.error("Contradiction verification failed (%s): %s", CRITIC_MODEL, e)
+        return None
 
 
 def _extract_claim_from_text(text: str) -> str:
