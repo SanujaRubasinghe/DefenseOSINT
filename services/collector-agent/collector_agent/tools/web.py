@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from bs4 import BeautifulSoup
-from ddgs import DDGS
 from datasketch import MinHash, MinHashLSH
+from ddgs import DDGS
 
 MAX_RESULTS = 20
 MAX_PAGES = 8
@@ -61,7 +61,7 @@ async def _fetch_one(client: httpx.AsyncClient, url: str, query: str) -> dict | 
             "title": title,
             "content": body,
             "source_url": str(resp.url),
-            "retrieved_at": datetime.now(timezone.utc),
+            "retrieved_at": datetime.now(UTC),
             "query": query,
         }
     except Exception:

@@ -1,10 +1,10 @@
 # services/collector-agent/collector_agent/tools/news.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import httpx
 import feedparser
+import httpx
 
 RSS_FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -36,7 +36,7 @@ async def search_news(query: str, days_back: int = 90, max_records: int = 20) ->
                         "title": title,
                         "content": summary or title,
                         "source_url": entry.get("link", ""),
-                        "retrieved_at": datetime.now(timezone.utc),
+                        "retrieved_at": datetime.now(UTC),
                         "published_at": None,
                         "query": query,
                         "source_name": feed_url,
