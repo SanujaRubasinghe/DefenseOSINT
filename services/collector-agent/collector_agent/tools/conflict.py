@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import UTC, datetime
 
@@ -10,6 +11,48 @@ import httpx
 TOKEN_URL = "https://acleddata.com/oauth/token"
 API_URL = "https://acleddata.com/api/acled/read"
 TIMEOUT = 15
+
+# ACLED filters on a structured country field, so it has to be given a country
+# name — passing an investigation's free-text query returns nothing. Countries
+# with ACLED coverage, longest first so "South Sudan" wins over "Sudan".
+COUNTRIES = sorted(
+    {
+        "Afghanistan", "Albania", "Algeria", "Angola", "Argentina", "Armenia", "Australia",
+        "Azerbaijan", "Bahrain", "Bangladesh", "Belarus", "Belgium", "Benin", "Bolivia",
+        "Bosnia and Herzegovina", "Brazil", "Bulgaria", "Burkina Faso", "Burundi", "Cambodia",
+        "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia",
+        "Democratic Republic of Congo", "Republic of Congo", "Costa Rica", "Croatia", "Cuba",
+        "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominican Republic", "Ecuador",
+        "Egypt", "El Salvador", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Finland",
+        "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Guatemala",
+        "Guinea", "Guinea-Bissau", "Haiti", "Honduras", "Hungary", "India", "Indonesia",
+        "Iran", "Iraq", "Ireland", "Israel", "Italy", "Ivory Coast", "Jamaica", "Japan",
+        "Jordan", "Kazakhstan", "Kenya", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia",
+        "Lebanon", "Lesotho", "Liberia", "Libya", "Lithuania", "Madagascar", "Malawi",
+        "Malaysia", "Mali", "Mauritania", "Mexico", "Moldova", "Mongolia", "Montenegro",
+        "Morocco", "Mozambique", "Myanmar", "Namibia", "Nepal", "Netherlands", "New Zealand",
+        "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman",
+        "Pakistan", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru",
+        "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda",
+        "Saudi Arabia", "Senegal", "Serbia", "Sierra Leone", "Singapore", "Slovakia",
+        "Slovenia", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain",
+        "Sri Lanka", "Sudan", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan",
+        "Tanzania", "Thailand", "Togo", "Tunisia", "Turkey", "Turkmenistan", "Uganda",
+        "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay",
+        "Uzbekistan", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
+    },
+    key=len,
+    reverse=True,
+)
+
+
+def find_country(text: str) -> str | None:
+    """First ACLED-covered country named in `text`, or None."""
+    lowered = text.lower()
+    for country in COUNTRIES:
+        if re.search(rf"\b{re.escape(country.lower())}\b", lowered):
+            return country
+    return None
 
 # Cache the token in memory so we don't log in on every single request —
 # it's valid for 24 hours.

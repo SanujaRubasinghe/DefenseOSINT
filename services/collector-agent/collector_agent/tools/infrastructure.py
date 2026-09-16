@@ -1,6 +1,7 @@
 # services/collector-agent/collector_agent/tools/infrastructure.py
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime
 
@@ -17,8 +18,11 @@ async def search_infrastructure(query: str, max_results: int = 10) -> list[dict]
 
     try:
         import shodan
+
+        # The Shodan client is synchronous; calling it inline would block the
+        # event loop and serialise every other tool in this worker.
         api = shodan.Shodan(api_key)
-        raw = api.search(query)
+        raw = await asyncio.to_thread(api.search, query)
     except Exception:
         return []
 
@@ -30,7 +34,13 @@ async def search_infrastructure(query: str, max_results: int = 10) -> list[dict]
         vulns = list(match.get("vulns", {}).keys())
         location = match.get("location", {})
 
-        content_lines = [
+        content_lines = []
+        # Same plain-text encoding the UI parses for map plotting.
+        if location.get("latitude") is not None and location.get("longitude") is not None:
+            content_lines.append(
+                f"Position: {location['latitude']:.4f}, {location['longitude']:.4f}"
+            )
+        content_lines += [
             f"Organization: {org}",
             f"Port: {port} ({match.get('transport', 'tcp')})",
             f"Product: {match.get('product', 'unknown')} {match.get('version', '')}",

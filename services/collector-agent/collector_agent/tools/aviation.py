@@ -33,9 +33,24 @@ async def search_aircraft(bbox: tuple[float, float, float, float] | None = None)
     results = []
     for state in (data.get("states") or [])[:20]:
         callsign = (state[1] or "").strip()
+        # OpenSky state vector: 5=longitude, 6=latitude, 10=true_track.
+        # These were previously dropped, which left the evidence unplottable.
+        longitude, latitude, heading = state[5], state[6], state[10]
+
+        lines = []
+        if latitude is not None and longitude is not None:
+            # "Position: <lat>, <lon>" is the agreed plain-text encoding the UI
+            # parses; EvidenceRecord has no geometry field yet.
+            lines.append(f"Position: {latitude:.4f}, {longitude:.4f}")
+        if heading is not None:
+            lines.append(f"Heading: {heading:.0f} deg")
+        lines.append(f"Origin: {state[2]}")
+        lines.append(f"Altitude: {state[7]}m")
+        lines.append(f"Velocity: {state[9]}m/s")
+
         results.append({
             "title": f"Aircraft {callsign or state[0]}",
-            "content": f"Origin: {state[2]}, altitude: {state[7]}m, velocity: {state[9]}m/s",
+            "content": "\n".join(lines),
             "source_url": "https://opensky-network.org",
             "retrieved_at": datetime.now(UTC),
             "published_at": None,

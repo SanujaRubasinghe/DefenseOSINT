@@ -65,9 +65,34 @@ async def _find_best_title(name: str) -> str | None:
     return None
 
 
+def extract_entity_name(text: str) -> str | None:
+    """Longest run of 2-4 consecutive capitalised words in `text`, if any.
+
+    Requiring the *whole* string to be a name (the previous behaviour) meant
+    this practically never fired, because the planner writes descriptive
+    queries like "Sri Lanka Air Force aircraft fleet" rather than bare proper
+    nouns. Pulling the run out of the sentence is enough to look up — full NER
+    is the Entity agent's job.
+    """
+    best: list[str] = []
+    run: list[str] = []
+    for raw in text.split():
+        word = raw.strip(".,;:()[]\"'")
+        if word[:1].isupper() and word.isalpha():
+            run.append(word)
+        else:
+            if len(run) > len(best):
+                best = run
+            run = []
+    if len(run) > len(best):
+        best = run
+
+    # A lone leading capital is just sentence case, not a name.
+    if len(best) < 2:
+        return None
+    return " ".join(best[:4])
+
+
 def looks_like_a_name(text: str) -> bool:
-    """Cheap heuristic: 2-4 consecutive capitalised words, no digits — good enough
-    to trigger an image lookup without full NER (that's the Entity agent's job)."""
-    words = text.split()
-    cap_words = [w for w in words if w[:1].isupper() and w.isalpha()]
-    return 1 < len(cap_words) <= 4 and len(cap_words) == len(words)
+    """Kept for callers that only need the boolean."""
+    return extract_entity_name(text) is not None
