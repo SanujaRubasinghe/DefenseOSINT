@@ -73,3 +73,31 @@ def test_extract_entities_returns_valid_bundle_with_real_entities():
     known_ids = {r.evidence_id for r in bundle.records}
     for entity in result.entities:
         assert set(entity.evidence_ids) <= known_ids
+
+    # ev-1's sentence structure ("X works for Y, which is based in Z") should
+    # yield both relations, including resolving the relative clause's implicit
+    # subject ("which") back to "Acme Corporation" rather than dropping it.
+    loc = by_name["Riga"]
+    by_predicate = {r.predicate: r for r in result.relationships}
+    assert by_predicate["works_for"].subject_id == person.canonical_id
+    assert by_predicate["works_for"].object_id == org.canonical_id
+    assert by_predicate["headquartered_in"].subject_id == org.canonical_id
+    assert by_predicate["headquartered_in"].object_id == loc.canonical_id
+    for relationship in result.relationships:
+        assert relationship.evidence_ids, "a relation must cite the evidence it came from"
+        assert 0.0 <= relationship.confidence <= 1.0
+
+
+def test_extract_entities_does_not_infer_relations_from_mere_co_occurrence():
+    # Jane Smith and Riga appear in the same sentence, but "visited" is not a
+    # recognised trigger — co-occurrence alone must not produce a relation.
+    bundle = EvidenceBundle(
+        investigation_id="inv-2",
+        task_id="merged",
+        records=[_record("ev-1", "Jane Smith visited Riga for a conference.")],
+        queries_executed=["jane smith riga"],
+    )
+
+    result = extract_entities(bundle)
+
+    assert result.relationships == []
