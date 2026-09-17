@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from bs4 import BeautifulSoup
-from ddgs import DDGS
 from datasketch import MinHash, MinHashLSH
+from ddgs import DDGS
 
 MAX_RESULTS = 20
 MAX_PAGES = 8
@@ -20,9 +20,13 @@ async def search_and_fetch(query: str, max_pages: int = MAX_PAGES) -> list[dict]
     """Search the web for `query`, fetch the top pages, dedupe near-identical
     content, and return plain dicts (no contract objects here — main.py maps
     these to EvidenceRecord)."""
-    urls = _ddg_search(query, max_pages)
+    # DDGS is a synchronous client. Called directly it blocks the event loop,
+    # which serialises every other tool and every other concurrent collect
+    # task in this worker — the reason five parallel tasks took ~26s each
+    # despite the tools being gathered. Hand it to a thread instead.
+    urls = await asyncio.to_thread(_ddg_search, query, max_pages)
     pages = await _fetch_pages(urls, query)
-    return _deduplicate(pages)
+    return await asyncio.to_thread(_deduplicate, pages)
 
 
 def _ddg_search(query: str, max_pages: int) -> list[str]:
@@ -61,7 +65,7 @@ async def _fetch_one(client: httpx.AsyncClient, url: str, query: str) -> dict | 
             "title": title,
             "content": body,
             "source_url": str(resp.url),
-            "retrieved_at": datetime.now(timezone.utc),
+            "retrieved_at": datetime.now(UTC),
             "query": query,
         }
     except Exception:
