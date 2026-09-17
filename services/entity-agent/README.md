@@ -15,8 +15,15 @@ entity mentioned different ways across documents is merged into one record via
 a deterministic `canonical_id` (a hash of entity type + normalised name), with
 `evidence_ids` and `aliases` accumulated across every record that mentions it.
 
-Relation extraction (`relationships` is currently always empty) is a follow-up
-piece of work — see the handover guide's "what comes next".
+Relations are extracted with a shallow dependency-pattern match: for each
+sentence, a small lemma lexicon (`work` -> `works_for`, `base` ->
+`headquartered_in`, etc.) is checked against the sentence's trigger tokens,
+and the syntactic subject/object of that trigger (direct, or via a
+preposition) are matched against recognised entities. It deliberately never
+emits a relation from plain co-occurrence — only from a matched syntactic
+pattern — since an unsupported link is exactly what critic-agent's citation
+checks are meant to catch. Confidence is intentionally lower than entity
+confidence, since this is a heuristic pattern match, not a model judgement.
 
 ## Run just this service
 ```bash

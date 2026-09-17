@@ -1,7 +1,4 @@
-"""entity-agent — NER, entity linking, relations.
-
-Relation extraction is a follow-up PR; see extract.py's module docstring.
-"""
+"""entity-agent — NER, entity linking, relation extraction."""
 
 import asyncio
 
