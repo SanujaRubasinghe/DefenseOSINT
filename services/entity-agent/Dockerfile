@@ -11,7 +11,8 @@ COPY shared /shared
 RUN pip install --no-cache-dir -e /shared
 
 COPY services/entity-agent/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+ && python -m spacy download en_core_web_sm
 
 COPY services/entity-agent/ .
 
