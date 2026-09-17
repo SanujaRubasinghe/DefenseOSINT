@@ -5,10 +5,10 @@
   "url": "http://entity-agent:8000",
   "skills": [
     {
-      "id": "TODO",
-      "description": "TODO",
-      "input": "TODO",
-      "output": "TODO"
+      "id": "extract",
+      "description": "NER over evidence content, merged into canonical entities with evidence linking",
+      "input": "EvidenceBundle",
+      "output": "EntityBundle"
     }
   ]
 }
