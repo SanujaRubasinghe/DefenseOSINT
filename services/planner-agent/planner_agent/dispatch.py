@@ -16,9 +16,21 @@ from .models import Investigation
 
 client = A2AClient(sender="planner-agent")
 
+# entity-agent's cleanup pass makes a real LLM call on top of NER — measured
+# well past the default 60s under load, but unlike a hung collector call
+# (worth failing fast on), a slow-but-working type-correction pass is worth
+# waiting for. See entity_agent/extract.py's ENTITY_CLEANUP_TIMEOUT for the
+# matching budget on that side.
+EXTRACT_TIMEOUT = 180.0
+
 
 async def _call(
-    inv: Investigation, url: str, recipient: str, skill: str, payload: dict
+    inv: Investigation,
+    url: str,
+    recipient: str,
+    skill: str,
+    payload: dict,
+    timeout: float | None = None,
 ) -> dict | None:
     started = time.perf_counter()
     inv.a2a_calls += 1
@@ -30,6 +42,7 @@ async def _call(
         payload=payload,
         correlation_id=inv.investigation_id,
         token=settings.a2a_token or None,
+        timeout=timeout,
     )
     ms = int((time.perf_counter() - started) * 1000)
 
@@ -59,6 +72,7 @@ async def extract(inv: Investigation, bundle: EvidenceBundle) -> EntityBundle | 
         "entity-agent",
         "extract",
         bundle.model_dump(mode="json"),
+        timeout=EXTRACT_TIMEOUT,
     )
     return EntityBundle.model_validate(payload) if payload else None
 
