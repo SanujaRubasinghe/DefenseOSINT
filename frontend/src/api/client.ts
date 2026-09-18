@@ -67,6 +67,21 @@ export const login = (username: string, password: string) =>
 
 export const getMe = () => request<{ username: string }>(GATEWAY_BASE, "/auth/me");
 
+export interface ServiceStatus {
+  name: string;
+  online: boolean;
+  latency_ms: number | null;
+}
+
+export interface SystemStatus {
+  services: ServiceStatus[];
+  all_online: boolean;
+}
+
+/** Pings every agent's real /health through the gateway — used by the
+ * post-login initialization screen. */
+export const getSystemStatus = () => request<SystemStatus>(GATEWAY_BASE, "/system/status");
+
 export const startInvestigation = (objective: string) =>
   request<{ investigation_id: string; status: string }>(GATEWAY_BASE, "/investigations", {
     method: "POST",

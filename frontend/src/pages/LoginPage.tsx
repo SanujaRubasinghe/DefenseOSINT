@@ -27,7 +27,10 @@ export default function LoginPage() {
     try {
       await login(username, password);
       const from = (location.state as { from?: string } | null)?.from ?? "/";
-      navigate(from, { replace: true });
+      // A fresh login always runs the initialization screen; only a
+      // rehydrated/already-authenticated session skips straight to `from`
+      // (see the isAuthenticated guard above).
+      navigate("/initializing", { replace: true, state: { from } });
     } catch {
       setError("Invalid username or password.");
     } finally {

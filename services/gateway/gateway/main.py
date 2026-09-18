@@ -8,6 +8,9 @@ stays internal to the compose network.
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 import httpx
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +51,29 @@ class LoginResponse(BaseModel):
     username: str
 
 
+class ServiceStatus(BaseModel):
+    name: str
+    online: bool
+    latency_ms: int | None
+
+
+class SystemStatus(BaseModel):
+    services: list[ServiceStatus]
+    all_online: bool
+
+
+# Every agent in the mesh, keyed by the same names the planner's own trace
+# uses (see planner_agent/models.py TraceEvent.agent) so the frontend's
+# post-login init screen and its live agent-fabric view read consistently.
+_AGENT_URLS = [
+    ("planner-agent", settings.planner_url),
+    ("collector-agent", settings.collector_url),
+    ("entity-agent", settings.entity_url),
+    ("critic-agent", settings.critic_url),
+    ("analyst-agent", settings.analyst_url),
+]
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "gateway"}
@@ -64,6 +90,29 @@ async def login(req: LoginRequest):
 @app.get("/auth/me")
 async def me(user: str = Depends(get_current_user)):
     return {"username": user}
+
+
+async def _ping(name: str, url: str) -> ServiceStatus:
+    started = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{url.rstrip('/')}/health")
+        online = resp.status_code == 200
+    except httpx.RequestError:
+        online = False
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    return ServiceStatus(name=name, online=online, latency_ms=elapsed_ms if online else None)
+
+
+@app.get("/system/status", response_model=SystemStatus)
+async def system_status(user: str = Depends(get_current_user)):
+    """Real health of every agent, pinged concurrently.
+
+    Used by the frontend's post-login initialization screen — every line it
+    shows is a genuine round trip to that agent, not a scripted delay.
+    """
+    results = await asyncio.gather(*(_ping(name, url) for name, url in _AGENT_URLS))
+    return SystemStatus(services=list(results), all_online=all(s.online for s in results))
 
 
 async def _forward(method: str, path: str, json: dict | None = None) -> dict:

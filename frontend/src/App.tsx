@@ -13,6 +13,7 @@ import MediaPage from "./pages/MediaPage";
 import OverviewPage from "./pages/OverviewPage";
 import ProvenancePage from "./pages/ProvenancePage";
 import ReportsPage from "./pages/ReportsPage";
+import SystemInitPage from "./pages/SystemInitPage";
 import { AuthProvider } from "./state/AuthContext";
 import { InvestigationProvider } from "./state/InvestigationContext";
 
@@ -22,6 +23,7 @@ export default function App() {
       <InvestigationProvider>
         <Routes>
           <Route path="login" element={<LoginPage />} />
+          <Route path="initializing" element={<SystemInitPage />} />
           <Route
             element={
               <RequireAuth>
