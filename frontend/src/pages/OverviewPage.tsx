@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import MetricCard from "../components/dashboard/MetricCard";
 import { SourceBadge, StatusIndicator } from "../components/common/indicators";
-import TacticalMap from "../components/maps/TacticalMap";
+import GeoMap from "../components/maps/GeoMap";
 import { Button, EmptyState, Panel, PanelHeader, Skeleton } from "../components/ui/primitives";
 import { extractContacts } from "../intel/parse";
 import { formatClock } from "../lib/utils";
@@ -113,7 +113,7 @@ export default function OverviewPage() {
           />
           <div className="p-3">
             {contacts.length > 0 ? (
-              <TacticalMap contacts={contacts} />
+              <GeoMap contacts={contacts} className="h-[22rem] w-full overflow-hidden rounded-sm border border-line" />
             ) : (
               <EmptyState
                 icon={<Map className="h-6 w-6" />}

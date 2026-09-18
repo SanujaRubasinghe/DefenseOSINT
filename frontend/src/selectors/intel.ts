@@ -1,6 +1,6 @@
 import type { EvidenceRecord, Investigation, TraceEvent } from "../api/types";
 
-// SENTINEL's views are derived here rather than in components, and every value
+// DefenseOSINT's views are derived here rather than in components, and every value
 // traces back to something an agent actually reported. Nothing on this screen
 // is synthetic: if the backend does not produce it, it is not shown.
 

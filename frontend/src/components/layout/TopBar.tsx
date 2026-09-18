@@ -31,7 +31,7 @@ export default function TopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-base/80 px-4 backdrop-blur">
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-xs">
         <Link to="/" className="text-dim transition-colors hover:text-muted">
-          SENTINEL
+          DefenseOSINT
         </Link>
         <ChevronRight className="h-3 w-3 text-dim" />
         <span className="truncate text-ink">{crumb}</span>

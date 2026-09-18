@@ -62,7 +62,7 @@ export default function Sidebar({ counts }: { counts: Record<string, number | nu
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Radar className="h-4 w-4 text-accent" />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold tracking-wide text-ink">SENTINEL</div>
+          <div className="truncate text-sm font-semibold tracking-wide text-ink">DefenseOSINT</div>
           <div className="metadata">OSINT FUSION</div>
         </div>
       </div>
