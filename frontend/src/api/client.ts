@@ -1,10 +1,9 @@
 import type { Investigation } from "./types";
 
-// /api -> gateway (health only, for now — see gateway/main.py TODO).
-// Gateway has no /investigations route yet, so we talk to planner-agent
-// directly instead of going through the Vite proxy.
+// /api -> gateway, via the Vite dev proxy (see vite.config.ts). The gateway
+// validates requests and forwards investigations to the planner, so the
+// browser only ever talks to one service.
 const GATEWAY_BASE = "/api";
-const PLANNER_BASE = "http://localhost:8001";
 
 export class ApiError extends Error {
   constructor(public status: number, public statusText: string, public body: string) {
@@ -33,10 +32,10 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
 export const getHealth = () => request<{ status: string }>(GATEWAY_BASE, "/health");
 
 export const startInvestigation = (objective: string) =>
-  request<{ investigation_id: string; status: string }>(PLANNER_BASE, "/investigations", {
+  request<{ investigation_id: string; status: string }>(GATEWAY_BASE, "/investigations", {
     method: "POST",
     body: JSON.stringify({ objective }),
   });
 
 export const getInvestigation = (id: string) =>
-  request<Investigation>(PLANNER_BASE, `/investigations/${id}`);
+  request<Investigation>(GATEWAY_BASE, `/investigations/${id}`);
