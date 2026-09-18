@@ -8,9 +8,20 @@ passthrough, error mapping), not about httpx.
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from gateway.auth import get_current_user
 from gateway.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _authenticated():
+    # These tests are about proxy behaviour, not the auth flow itself (that's
+    # test_auth.py) — bypass the dependency so a missing/expired token can't
+    # make a proxy test fail for the wrong reason.
+    app.dependency_overrides[get_current_user] = lambda: "test-analyst"
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_create_investigation_rejects_short_objective():

@@ -1,19 +1,21 @@
 """gateway — public entry point.
 
-Validates incoming requests and forwards investigations to the planner. This
-is the only service the frontend should talk to; agent-to-agent traffic among
-planner/collector/entity/critic/analyst stays internal to the compose network.
+Authenticates the analyst, validates incoming requests, and forwards
+investigations to the planner. This is the only service the frontend should
+talk to; agent-to-agent traffic among planner/collector/entity/critic/analyst
+stays internal to the compose network.
 """
 
 from __future__ import annotations
 
 import httpx
-from defenseosint_common.config import Settings
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-settings = Settings("gateway")
+from .auth import create_access_token, get_current_user, verify_credentials
+from .config import settings
+
 app = FastAPI(title="gateway")
 
 # The frontend talks to the gateway, not the planner directly, so CORS has to
@@ -23,7 +25,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -34,9 +36,34 @@ class InvestigationRequest(BaseModel):
     objective: str = Field(min_length=10, max_length=1000)
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    username: str
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "gateway"}
+
+
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(req: LoginRequest):
+    if not verify_credentials(req.username, req.password):
+        raise HTTPException(401, "invalid username or password")
+    token, expires_in = create_access_token(req.username)
+    return LoginResponse(access_token=token, expires_in=expires_in, username=req.username)
+
+
+@app.get("/auth/me")
+async def me(user: str = Depends(get_current_user)):
+    return {"username": user}
 
 
 async def _forward(method: str, path: str, json: dict | None = None) -> dict:
@@ -64,15 +91,15 @@ async def _forward(method: str, path: str, json: dict | None = None) -> dict:
 
 
 @app.post("/investigations", status_code=202)
-async def create_investigation(req: InvestigationRequest):
+async def create_investigation(req: InvestigationRequest, user: str = Depends(get_current_user)):
     return await _forward("POST", "/investigations", json={"objective": req.objective})
 
 
 @app.get("/investigations/{investigation_id}")
-async def get_investigation(investigation_id: str):
+async def get_investigation(investigation_id: str, user: str = Depends(get_current_user)):
     return await _forward("GET", f"/investigations/{investigation_id}")
 
 
 @app.get("/investigations/{investigation_id}/trace")
-async def get_trace(investigation_id: str):
+async def get_trace(investigation_id: str, user: str = Depends(get_current_user)):
     return await _forward("GET", f"/investigations/{investigation_id}/trace")
