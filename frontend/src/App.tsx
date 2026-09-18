@@ -1,37 +1,34 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import BootSequence from "./components/BootSequence";
-import ConsoleShell from "./layouts/ConsoleShell";
-import InvestigationShell from "./layouts/InvestigationShell";
+import AppShell from "./components/layout/AppShell";
+import AgentActivityPage from "./pages/AgentActivityPage";
 import AssessmentPage from "./pages/AssessmentPage";
-import BriefPage from "./pages/BriefPage";
-import EvidencePage from "./pages/EvidencePage";
-import FabricPage from "./pages/FabricPage";
-import LaunchPage from "./pages/LaunchPage";
-import TaskingPage from "./pages/TaskingPage";
-import TracePage from "./pages/TracePage";
-import { InvestigationProvider, useInvestigation } from "./state/InvestigationContext";
-
-function Boot() {
-  const { gatewayChecked } = useInvestigation();
-  return <BootSequence done={gatewayChecked} />;
-}
+import CollectionPage from "./pages/CollectionPage";
+import EntitiesPage from "./pages/EntitiesPage";
+import EvidenceExplorerPage from "./pages/EvidencePage";
+import FeedPage from "./pages/FeedPage";
+import GeospatialPage from "./pages/GeospatialPage";
+import MediaPage from "./pages/MediaPage";
+import OverviewPage from "./pages/OverviewPage";
+import ProvenancePage from "./pages/ProvenancePage";
+import ReportsPage from "./pages/ReportsPage";
+import { InvestigationProvider } from "./state/InvestigationContext";
 
 export default function App() {
   return (
     <InvestigationProvider>
-      <Boot />
       <Routes>
-        <Route element={<ConsoleShell />}>
-          <Route index element={<LaunchPage />} />
-          <Route path="investigation/:id" element={<InvestigationShell />}>
-            <Route index element={<Navigate to="fabric" replace />} />
-            <Route path="fabric" element={<FabricPage />} />
-            <Route path="tasking" element={<TaskingPage />} />
-            <Route path="evidence" element={<EvidencePage />} />
-            <Route path="assessment" element={<AssessmentPage />} />
-            <Route path="brief" element={<BriefPage />} />
-            <Route path="trace" element={<TracePage />} />
-          </Route>
+        <Route element={<AppShell />}>
+          <Route index element={<OverviewPage />} />
+          <Route path="feed" element={<FeedPage />} />
+          <Route path="collection" element={<CollectionPage />} />
+          <Route path="entities" element={<EntitiesPage />} />
+          <Route path="geoint" element={<GeospatialPage />} />
+          <Route path="media" element={<MediaPage />} />
+          <Route path="evidence" element={<EvidenceExplorerPage />} />
+          <Route path="provenance" element={<ProvenancePage />} />
+          <Route path="assessment" element={<AssessmentPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="agents" element={<AgentActivityPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
