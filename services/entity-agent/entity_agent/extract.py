@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 from functools import lru_cache
 
+import httpx
 import spacy
 from defenseosint_common.contracts import Entity, EntityBundle, EvidenceBundle, Relationship
 from spacy.tokens import Doc, Span, Token
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -500,3 +504,238 @@ def extract_entities(bundle: EvidenceBundle) -> EntityBundle:
         entities=entities,
         relationships=relationships,
     )
+
+
+# --- LLM-assisted type correction --------------------------------------------
+#
+# spaCy's small model reliably mistags short acronyms — verified on this
+# project's own output: RCyAF and PACAF, both real air force acronyms, came
+# back tagged PERSON. This pass asks a model to check a *bounded* set of
+# entities the extractor is already unsure about, and only ever RETYPEs them.
+#
+# Scope was set by testing against real DefenseOSINT extractions, not
+# guessed:
+#   - qwen2.5:3b was tried first (already used elsewhere in this project) and
+#     failed on exactly the cases that mattered: it dropped RCyAF and PACAF
+#     instead of retyping them, across two different prompt phrasings, and
+#     separately hallucinated a merge target id that did not exist in the
+#     batch. qwen2.5:7b got 10/11 right on the same batch, including both
+#     acronyms — hence the larger model here, and MERGE/DROP staying off the
+#     table entirely rather than trusting either model with them: a wrong
+#     type is recoverable (the entity is still visible under a different
+#     label), a dropped entity or a merge into a hallucinated id is not.
+#   - Only genuinely ambiguous entities are sent (short all-caps acronyms, or
+#     ones below the confidence a second source would give them), capped at
+#     ENTITY_CLEANUP_MAX_CANDIDATES — this bounds both latency (a real model
+#     call, not free) and the model's opportunity to "fix" something that was
+#     already right.
+#   - Every result is validated against the actual request before being
+#     applied: unknown ids, types outside the fixed vocabulary, and
+#     unparsable output are all discarded silently. This pass can only make
+#     the bundle better or leave it unchanged, never worse.
+
+ENTITY_CLEANUP_ENABLED = os.getenv("ENTITY_CLEANUP_ENABLED", "true").lower() == "true"
+ENTITY_CLEANUP_MODEL = os.getenv("ENTITY_CLEANUP_MODEL", "qwen2.5:7b")
+# The planner gives the whole /a2a/extract call 180s specifically to make
+# room for this pass (see EXTRACT_TIMEOUT in planner_agent/dispatch.py) —
+# entity extraction returning None fails the entire investigation, not just a
+# degraded field, so it's worth spending real time rather than racing a
+# tight budget. This is kept a little below that ceiling so a slow model
+# still fails fast enough for the "return bundle unchanged" fallback to reach
+# the planner rather than the connection being cut first.
+ENTITY_CLEANUP_TIMEOUT = float(os.getenv("ENTITY_CLEANUP_TIMEOUT", "150"))
+# 20 is chosen for output quality, not latency: tested against qwen2.5:7b on
+# this project's real 85-entity extraction, one giant batch made the model
+# collapse to a single object instead of an array — the cap keeps every batch
+# small enough to reliably get a complete, parseable response.
+ENTITY_CLEANUP_MAX_CANDIDATES = int(os.getenv("ENTITY_CLEANUP_MAX_CANDIDATES", "20"))
+ENTITY_CLEANUP_CONFIDENCE_THRESHOLD = float(os.getenv("ENTITY_CLEANUP_CONFIDENCE_THRESHOLD", "0.7"))
+
+# All-caps acronyms (SLAF, PACAF) are the obvious case, but real military
+# acronyms are often mixed-case by convention too (RCyAF = Royal Ceylon Air
+# Force) — verified as a real miss when this only matched pure [A-Z]. A short
+# alphabetic token with at least two capitals is acronym-shaped either way.
+_SHORT_TOKEN_RE = re.compile(r"^[A-Za-z]{2,6}$")
+
+
+def _looks_like_acronym(name: str) -> bool:
+    name = name.strip()
+    return bool(_SHORT_TOKEN_RE.match(name)) and sum(1 for c in name if c.isupper()) >= 2
+
+_RETYPE_PROMPT = """Each line below is a named entity extracted by an automated NER system, with the type it was assigned. The types are PERSON, ORG (organisation), LOCATION, or EVENT.
+
+For each entity, decide whether current_type is correct. If not, give the correct type from that same list. If the "entity" is not a real named thing at all (a filename, a webpage fragment, a menu caption, a generic word), still give your best-guess type rather than leaving it blank — do not invent an id, do not suggest merging it with anything.
+
+Output ONLY a JSON array, one object per line below, using the exact ids given verbatim, in this form:
+[{{"id":"<id from input>","correct":true}},{{"id":"<id from input>","correct":false,"correct_type":"ORG"}}]
+
+Entities:
+{lines}
+"""
+
+
+def _is_review_candidate(entity: Entity) -> bool:
+    """Cheap prefilter for entities worth spending a model call on: short
+    all-caps acronyms are exactly the class of token spaCy mistags most
+    often, and low-confidence entities are the ones least corroborated by
+    repetition across sources."""
+    return _looks_like_acronym(entity.name) or (
+        entity.confidence < ENTITY_CLEANUP_CONFIDENCE_THRESHOLD
+    )
+
+
+def _parse_json_array(raw: str) -> list | None:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # Observed directly against qwen2.5:7b on this project's own data: an
+        # extra closing brace between objects (`..."NONE"}},{"id":...` instead
+        # of `..."NONE"},{"id":...`). Cheap to repair, not worth discarding an
+        # otherwise-valid response over.
+        repaired = re.sub(r"\}\}(\s*,)", r"}\1", raw)
+        try:
+            parsed = json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+    return parsed if isinstance(parsed, list) else None
+
+
+async def _suggest_retypes(candidates: list[Entity]) -> dict[str, str]:
+    """Ask the model which of `candidates` are mistyped. Returns
+    {canonical_id: corrected_type} for entries that pass validation —
+    everything else (hallucinated ids, invalid types, unparsable output) is
+    dropped rather than raised, since this pass must never fail extraction."""
+    known_ids = {e.canonical_id for e in candidates}
+    lines = "\n".join(
+        f'id={e.canonical_id} name="{e.name}" current_type={e.type}' for e in candidates
+    )
+    prompt = _RETYPE_PROMPT.format(lines=lines)
+
+    try:
+        async with httpx.AsyncClient(timeout=ENTITY_CLEANUP_TIMEOUT) as client:
+            resp = await client.post(
+                f"{settings.ollama_url.rstrip('/')}/api/generate",
+                json={
+                    "model": ENTITY_CLEANUP_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0},
+                },
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("entity retype pass failed (%s): %s", ENTITY_CLEANUP_MODEL, exc)
+        return {}
+
+    parsed = _parse_json_array(resp.json().get("response", ""))
+    if parsed is None:
+        logger.warning("entity retype pass returned unparsable output")
+        return {}
+
+    fixes: dict[str, str] = {}
+    for item in parsed:
+        if not isinstance(item, dict) or item.get("correct") is not False:
+            continue
+        cid = item.get("id")
+        new_type = item.get("correct_type")
+        if cid not in known_ids or new_type not in TYPE_PREFIX:
+            continue
+        fixes[cid] = new_type
+    return fixes
+
+
+def _apply_retypes(bundle: EntityBundle, fixes: dict[str, str]) -> EntityBundle:
+    """Rebuild the bundle with corrected types. Retyping changes an entity's
+    canonical_id (it is a hash of type + name), so relationships that pointed
+    at the old id are remapped, and the rare case of a retype landing on an
+    id that already exists (e.g. two surface forms of the same acronym, one
+    already correctly typed) is merged rather than left as a duplicate."""
+    id_remap: dict[str, str] = {}
+    merged: dict[str, Entity] = {}
+
+    for entity in bundle.entities:
+        new_type = fixes.get(entity.canonical_id)
+        if new_type is None or new_type == entity.type:
+            target_id, target_type = entity.canonical_id, entity.type
+        else:
+            target_id = canonical_id(new_type, normalize(entity.name))
+            target_type = new_type
+            id_remap[entity.canonical_id] = target_id
+
+        existing = merged.get(target_id)
+        if existing is None:
+            merged[target_id] = Entity(
+                canonical_id=target_id,
+                name=entity.name,
+                type=target_type,
+                aliases=entity.aliases,
+                confidence=entity.confidence,
+                evidence_ids=entity.evidence_ids,
+            )
+        else:
+            aliases = set(existing.aliases) | set(entity.aliases)
+            if entity.name != existing.name:
+                aliases.add(entity.name)
+            merged[target_id] = Entity(
+                canonical_id=target_id,
+                name=existing.name,
+                type=target_type,
+                aliases=sorted(aliases),
+                confidence=max(existing.confidence, entity.confidence),
+                evidence_ids=sorted(set(existing.evidence_ids) | set(entity.evidence_ids)),
+            )
+
+    def remap(old_id: str) -> str:
+        return id_remap.get(old_id, old_id)
+
+    rel_map: dict[tuple[str, str, str], Relationship] = {}
+    for r in bundle.relationships:
+        subj_id, obj_id = remap(r.subject_id), remap(r.object_id)
+        if subj_id not in merged or obj_id not in merged:
+            continue
+        key = (subj_id, r.predicate, obj_id)
+        existing_rel = rel_map.get(key)
+        if existing_rel is None:
+            rel_map[key] = Relationship(
+                subject_id=subj_id,
+                predicate=r.predicate,
+                object_id=obj_id,
+                confidence=r.confidence,
+                evidence_ids=r.evidence_ids,
+            )
+        else:
+            rel_map[key] = Relationship(
+                subject_id=subj_id,
+                predicate=r.predicate,
+                object_id=obj_id,
+                confidence=max(existing_rel.confidence, r.confidence),
+                evidence_ids=sorted(set(existing_rel.evidence_ids) | set(r.evidence_ids)),
+            )
+
+    return EntityBundle(
+        investigation_id=bundle.investigation_id,
+        entities=sorted(merged.values(), key=lambda e: (-e.confidence, e.name)),
+        relationships=list(rel_map.values()),
+    )
+
+
+async def clean_entities(bundle: EntityBundle) -> EntityBundle:
+    """Entry point used by run_extraction. Degrades to returning `bundle`
+    unchanged if cleanup is disabled, there is nothing worth reviewing, or
+    the model call fails for any reason."""
+    if not ENTITY_CLEANUP_ENABLED or not bundle.entities:
+        return bundle
+
+    candidates = sorted(
+        (e for e in bundle.entities if _is_review_candidate(e)), key=lambda e: e.confidence
+    )[:ENTITY_CLEANUP_MAX_CANDIDATES]
+    if not candidates:
+        return bundle
+
+    logger.info("reviewing %d entity type(s) with %s", len(candidates), ENTITY_CLEANUP_MODEL)
+    fixes = await _suggest_retypes(candidates)
+    if not fixes:
+        return bundle
+
+    logger.info("retyped %d entity(ies): %s", len(fixes), fixes)
+    return _apply_retypes(bundle, fixes)

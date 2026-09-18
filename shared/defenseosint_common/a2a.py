@@ -48,7 +48,12 @@ class A2AClient:
         payload: dict[str, Any],
         correlation_id: str,
         token: str | None = None,
+        timeout: float | None = None,
     ) -> A2AResponse:
+        """`timeout` overrides the client's default for this call only — some
+        skills (e.g. entity-agent's LLM-assisted cleanup) legitimately need
+        more room than a typical agent call without loosening the ceiling
+        every other skill is held to."""
         msg = A2AMessage(
             correlation_id=correlation_id,
             sender=self.sender,
@@ -58,7 +63,7 @@ class A2AClient:
         )
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout if timeout is not None else self.timeout) as client:
                 r = await client.post(
                     f"{url.rstrip('/')}/a2a/{skill}",
                     json=msg.model_dump(mode="json"),

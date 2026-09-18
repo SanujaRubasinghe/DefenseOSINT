@@ -3,13 +3,11 @@
 import asyncio
 
 from defenseosint_common.a2a import A2AMessage, reply
-from defenseosint_common.config import Settings
 from defenseosint_common.contracts import EntityBundle, EvidenceBundle
 from fastapi import FastAPI
 
-from .extract import extract_entities
+from .extract import clean_entities, extract_entities
 
-settings = Settings("entity-agent")
 app = FastAPI(title="entity-agent")
 
 
@@ -28,4 +26,6 @@ async def extract(msg: A2AMessage):
 async def run_extraction(bundle: EvidenceBundle) -> EntityBundle:
     # spaCy's NER call is synchronous CPU work; run it off the event loop so
     # one extraction can't stall the health check or a concurrent request.
-    return await asyncio.to_thread(extract_entities, bundle)
+    extracted = await asyncio.to_thread(extract_entities, bundle)
+    # Bounded LLM retype pass — see extract.py for why this is retype-only.
+    return await clean_entities(extracted)
