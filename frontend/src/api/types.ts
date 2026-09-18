@@ -37,9 +37,27 @@ export interface TaskRecord {
   evidence_count: number;
 }
 
+/** Mirrors contracts.Entity — the agent returns aliases and evidence links too. */
+export interface Entity {
+  canonical_id: string;
+  name: string;
+  type: string;
+  aliases: string[];
+  confidence: number;
+  evidence_ids: string[];
+}
+
+export interface Relationship {
+  subject_id: string;
+  predicate: string;
+  object_id: string;
+  confidence: number;
+  evidence_ids: string[];
+}
+
 export interface EntityBundle {
-  entities: { canonical_id: string; name: string; type: string; confidence: number }[];
-  relationships: { subject_id: string; predicate: string; object_id: string; confidence: number }[];
+  entities: Entity[];
+  relationships: Relationship[];
 }
 
 export interface DraftSection {
