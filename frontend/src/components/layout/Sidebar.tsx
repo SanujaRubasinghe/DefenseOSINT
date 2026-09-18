@@ -5,6 +5,7 @@ import {
   Gauge,
   Images,
   Layers,
+  LogOut,
   Map,
   Network,
   Radar,
@@ -14,6 +15,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/utils";
+import { useAuth } from "../../state/AuthContext";
 import { StatusIndicator } from "../common/indicators";
 
 export interface NavItem {
@@ -56,7 +58,13 @@ export const NAV_SECTIONS: { heading: string; items: Omit<NavItem, "count">[] }[
   },
 ];
 
+function initials(username: string): string {
+  return username.slice(0, 2).toUpperCase();
+}
+
 export default function Sidebar({ counts }: { counts: Record<string, number | null> }) {
+  const { username, logout } = useAuth();
+
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-base/80">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
@@ -111,12 +119,20 @@ export default function Sidebar({ counts }: { counts: Record<string, number | nu
       <div className="border-t border-line px-3 py-3">
         <div className="flex items-center gap-2">
           <div className="grid h-7 w-7 place-items-center rounded-sm border border-line-bright bg-raised font-mono text-2xs text-accent">
-            AN
+            {username ? initials(username) : "—"}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs text-ink">Analyst</div>
+            <div className="truncate text-xs text-ink">{username ?? "Analyst"}</div>
             <div className="metadata">CLEARANCE / OSINT</div>
           </div>
+          <button
+            onClick={logout}
+            title="Sign out"
+            aria-label="Sign out"
+            className="rounded-sm p-1 text-dim transition-colors hover:bg-raised hover:text-critical"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
         </div>
         <div className="mt-2 flex items-center justify-between">
           <StatusIndicator status="operational" label="AUTHORIZED" />
