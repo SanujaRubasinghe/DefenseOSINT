@@ -57,10 +57,10 @@ async def _fetch_one(client: httpx.AsyncClient, url: str, query: str) -> dict | 
         if resp.status_code != 200:
             return None
         soup = BeautifulSoup(resp.text, "lxml")
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
             tag.decompose()
         title = soup.title.string.strip() if soup.title else ""
-        body = " ".join(soup.get_text(" ", strip=True).split())[:4000]
+        body = _main_text(soup)[:4000]
         return {
             "title": title,
             "content": body,
@@ -70,6 +70,30 @@ async def _fetch_one(client: httpx.AsyncClient, url: str, query: str) -> dict | 
         }
     except Exception:
         return None
+
+
+def _main_text(soup: BeautifulSoup) -> str:
+    """Body prose only, taken from paragraph tags.
+
+    Flattening the whole document with get_text() pulled in navigation menus,
+    infobox rows, category lists and footers. That is fine for keyword
+    relevance but it destroys sentence structure, which is what the entity
+    agent's dependency parsing needs — over 90 real pages it left almost no
+    parseable sentences. Reading <p> inside the main content region keeps
+    actual prose and drops the furniture.
+    """
+    region = soup.find("article") or soup.find("main") or soup.body or soup
+    paragraphs = [
+        " ".join(p.get_text(" ", strip=True).split())
+        for p in region.find_all("p")
+    ]
+    # Single-clause fragments are almost always captions, bylines or link rows.
+    prose = [p for p in paragraphs if len(p) > 80]
+
+    if prose:
+        return "\n\n".join(prose)
+    # Some pages carry no <p> at all; fall back rather than return nothing.
+    return " ".join(region.get_text(" ", strip=True).split())
 
 
 def _deduplicate(pages: list[dict]) -> list[dict]:
