@@ -40,7 +40,7 @@ tests/       cross-service tests
 ## Contributors
 | Member | Role | Owns |
 |---|---|---|
-| Rubasinghe R.S. | Leader | gateway, planner-agent, analyst-agent, shared/, docker |
+| Rubasinghe R.S. | Orchestration and synthesis | gateway, planner-agent, analyst-agent, shared/, docker |
 | D.M.A.S.B. Thanayamwatta | Collector / IR | collector-agent |
 | H.M.R.M. Vidyanjani | NLP / Entity | entity-agent |
 | M.M.M. Javid | Critic / Security / RAI | critic-agent |
